@@ -21,6 +21,29 @@ htmlcov/
 inifile.params
 *.secret
 
+# Secrets & credentials — NEVER commit (SAP prod credentials, SSH keys, env)
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ecdsa
+id_dsa
+*.ppk
+known_hosts
+.env
+.env.*
+!.env.example
+SecStore.*
+*.secstore
+*_rsa
+credentials.yaml
+credentials.yml
+secrets.yaml
+secrets.yml
+
 # OS / editor
 .DS_Store
 *.swp
