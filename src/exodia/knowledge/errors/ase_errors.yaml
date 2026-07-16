@@ -1,0 +1,22 @@
+# SAP ASE (Sybase) load/dump known errors -> cause + generic fix + SAP Note number.
+
+- pattern: "load database.*failed|dump.*not.*compatible|wrong.*dump"
+  cause: "Dump/load incompatibility (page size, version, or corrupt dump)"
+  fix:
+    - "Confirm target ASE page size and version are compatible with the dump"
+    - "Re-create the database 'for load' with matching size before load database"
+  sap_note: "1706801"
+
+- pattern: "device.*not.*found|no space.*device|cannot allocate.*device"
+  cause: "Target device missing or too small for the load"
+  fix:
+    - "Create/extend ASE devices to match or exceed the source layout"
+    - "Verify sysdevices and free space before load"
+  sap_note: "1590719"
+
+- pattern: "online database.*failed|recovery.*failed.*ase"
+  cause: "online database failed after load (recovery / transaction replay issue)"
+  fix:
+    - "Load the required transaction dumps in sequence before online database"
+    - "Check ASE errorlog for the failing recovery step"
+  sap_note: "1706801"

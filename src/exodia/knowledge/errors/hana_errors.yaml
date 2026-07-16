@@ -1,0 +1,35 @@
+# HANA recovery / backup known errors -> cause + generic fix + SAP Note number.
+
+- pattern: "log backup .*missing|recovery could not be completed|cannot find log backup"
+  cause: "A log backup is missing from the recovery sequence"
+  fix:
+    - "Verify the log backup exists in the configured backup path / backint"
+    - "Copy the missing log backup from source, then resume the recovery"
+  sap_note: "1642148"
+
+- pattern: "backup could not be found|no data backup|catalog.*not.*found"
+  cause: "Data backup or backup catalog not found at the target"
+  fix:
+    - "Confirm the data backup and backup_catalog are present and readable"
+    - "Check the catalog with hdbbackupdiag / backup.log"
+  sap_note: "1642148"
+
+- pattern: "encryption root key|root key.*missing|cannot decrypt.*backup"
+  cause: "Encryption root keys not available for an encrypted backup recovery"
+  fix:
+    - "Provide the exported root keys (backup encryption / data volume keys)"
+    - "Import keys before recovery; keys are system-specific"
+  sap_note: "2444090"
+
+- pattern: "insufficient (disk )?space|no space left|volume full"
+  cause: "Not enough free space on the target for the restore"
+  fix:
+    - "Free space or extend the data/log volumes on the target"
+    - "Size target >= source data size plus headroom"
+  sap_note: "1999930"
+
+- pattern: "log_mode|log mode.*overwrite"
+  cause: "log_mode not set to normal (required for log backups / point-in-time)"
+  fix:
+    - "Set log_mode=normal in global.ini [persistence] and restart, then take a full data backup"
+  sap_note: "1999993"
