@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 class Status(str, Enum):
     """Outcome of a check or action phase."""
 
-    PASS = "pass"
+    PASS = "pass"  # nosec B105 - status enum value, not a password
     WARN = "warn"
     FAIL = "fail"
     SKIP = "skip"

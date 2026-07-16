@@ -85,7 +85,7 @@ class HanaPortsCheck(Check):
                 self.name,
                 "instance number not provided/invalid; cannot derive ports",
             )
-        assert the_instance is not None
+        assert the_instance is not None  # nosec B101 - narrowed by the guard above, not a security gate
         host = ctx.get("db_host", "localhost")
         ports = c.hana_ports(the_instance)
         unreachable: list[int] = []
