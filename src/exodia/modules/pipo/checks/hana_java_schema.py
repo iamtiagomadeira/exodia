@@ -33,9 +33,11 @@ class HanaJavaSchemaCheck(Check):
         runner = ctx.runner()
         # Query the SCHEMAS system view for the Java schema. -j = no headers,
         # -x = quiet, -a = no column formatting -> just the value.
+        # nosec B608 - `schema` is a SAP schema identifier (SAP<SID>DB) derived
+        # from trusted config, passed as one argv element to hdbsql (no shell).
         sql = (
             "SELECT COUNT(*) FROM SYS.SCHEMAS "
-            f"WHERE SCHEMA_NAME = '{schema}'"
+            f"WHERE SCHEMA_NAME = '{schema}'"  # nosec B608
         )
         argv = [
             "hdbsql",
