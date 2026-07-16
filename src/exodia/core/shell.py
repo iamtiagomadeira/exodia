@@ -8,7 +8,7 @@ the single biggest flaw found in the internal predecessor tool.
 from __future__ import annotations
 
 import shlex
-import subprocess
+import subprocess  # nosec B404 - argv-only execution; shell=True is never used (see run())
 from dataclasses import dataclass
 
 import paramiko
@@ -39,7 +39,7 @@ class Runner:
         if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
             raise TypeError("argv must be a list[str] — no shell strings allowed")
         try:
-            proc = subprocess.run(  # noqa: S603 - argv list, never shell=True
+            proc = subprocess.run(  # nosec B603 # noqa: S603 - argv list[str], never shell=True; input is a validated arg list
                 argv,
                 capture_output=True,
                 text=True,
@@ -64,6 +64,9 @@ class SSHRunner:
     not blindly trust unknown hosts. Callers can supply a known_hosts path.
     """
 
+    #: TCP/auth/banner timeout for establishing the connection (seconds).
+    connect_timeout: int = 30
+
     def __init__(
         self,
         host: str,
@@ -71,12 +74,14 @@ class SSHRunner:
         port: int = 22,
         key_filename: str | None = None,
         known_hosts: str | None = None,
+        connect_timeout: int = 30,
     ) -> None:
         self.host = host
         self.user = user
         self.port = port
         self.key_filename = key_filename
         self._known_hosts = known_hosts
+        self.connect_timeout = connect_timeout
         self._client: paramiko.SSHClient | None = None
 
     def connect(self) -> None:
@@ -86,6 +91,9 @@ class SSHRunner:
         else:
             client.load_system_host_keys()
         # RejectPolicy: refuse unknown hosts rather than silently trusting them.
+        # Password auth is intentionally NOT enabled: only key-based auth (agent,
+        # look_for_keys, or explicit key_filename) is used, so no secret is ever
+        # passed to paramiko or held in memory as a cleartext password.
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
         client.connect(
             hostname=self.host,
@@ -94,16 +102,25 @@ class SSHRunner:
             key_filename=self.key_filename,
             allow_agent=True,
             look_for_keys=True,
+            # Bound every phase of the handshake so a hung/unreachable host can
+            # never block a migration run indefinitely.
+            timeout=self.connect_timeout,
+            banner_timeout=self.connect_timeout,
+            auth_timeout=self.connect_timeout,
         )
         self._client = client
 
     def run(self, argv: list[str], timeout: int = 300) -> CommandResult:
         if self._client is None:
             self.connect()
-        assert self._client is not None
-        # Build a properly-quoted remote command line from the arg list.
+        assert self._client is not None  # nosec B101 - post-connect invariant, not a security gate
+        # Build a properly-quoted remote command line from the arg list. Every
+        # element is escaped with shlex.quote, so no argv value can break out of
+        # its token — this neutralises the paramiko exec_command injection risk.
         cmd = " ".join(shlex.quote(a) for a in argv)
-        _stdin, stdout, stderr = self._client.exec_command(cmd, timeout=timeout)
+        _stdin, stdout, stderr = self._client.exec_command(  # nosec B601 - argv shlex-quoted, no shell metachar injection
+            cmd, timeout=timeout
+        )
         exit_code = stdout.channel.recv_exit_status()
         return CommandResult(argv, exit_code, stdout.read().decode(), stderr.read().decode())
 

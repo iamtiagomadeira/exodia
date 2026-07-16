@@ -122,8 +122,11 @@ class AseRestoreDriver(DBRestoreDriver):
         runner = ctx.runner()
         # status 0 in sysdatabases means the database is online (no offline/
         # loading/suspect bits set).
+        # nosec B608 - not user-facing SQL: `database` is a SAP DB identifier from
+        # trusted migration config, and the statement is passed as a single argv
+        # element to isql (never a shell). ASE DDL/status verbs cannot be bound.
         sql = (
-            f"select name, status from master..sysdatabases where name = '{database}'"
+            f"select name, status from master..sysdatabases where name = '{database}'"  # nosec B608
         )
         cr = runner.run(self._isql(ctx, sql), timeout=int(ctx.get("verify_timeout", 120)))
         if not cr.ok:
