@@ -1,0 +1,66 @@
+site_name: Exodia
+site_description: >-
+  Executor CLI stateless para operações de migração SAP — checks e actions para
+  backup/restore de HANA & ASE, tenant copy, HSR e system copy de Java PI/PO.
+site_author: Tiago Madeira
+repo_url: https://github.com/iamtiagomadeira/exodia
+repo_name: iamtiagomadeira/exodia
+copyright: MIT © Tiago Madeira
+
+theme:
+  name: material
+  language: pt
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Mudar para modo escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Mudar para modo claro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Início: index.md
+  - Getting Started: getting-started.md
+  - Guia de Checks: guide-checks.md
+  - Guia de Actions: guide-actions.md
+  - Caso Java PI/PO + HANA: pipo-hana-case.md
+  - Troubleshooting (KB): troubleshooting.md
+  - Arquitetura: architecture.md
+  - Contribuir: contributing.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/iamtiagomadeira/exodia

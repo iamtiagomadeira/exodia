@@ -59,6 +59,18 @@ Alpha. Core is stable; methodology modules (backup/restore for HANA & ASE, and
 Java PI/PO system copy) are under active development. See the Linear project for the
 roadmap.
 
+## Documentation
+
+Full docs (getting started, guides, the Java PI/PO + HANA case, troubleshooting KB,
+and architecture) live under [`docs/`](docs/index.md) and build with MkDocs Material:
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve            # http://127.0.0.1:8000
+```
+
+See also [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture.md`](docs/architecture.md).
+
 ## Supported scenarios (target)
 
 | Methodology | Databases | Notes |
