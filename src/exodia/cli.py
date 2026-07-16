@@ -128,7 +128,7 @@ def run_op(
         results = run_checks([check_cls()], ctx)
         title = f"Check: {name}"
     else:
-        assert action_cls is not None
+        assert action_cls is not None  # nosec B101 - type-narrowing invariant (checked above), not a security gate
         action = action_cls()
         prechecks = []
         for c in action.requires_checks:

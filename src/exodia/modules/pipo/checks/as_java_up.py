@@ -75,7 +75,7 @@ def _parse_process_list(stdout: str) -> dict[str, str]:
         status = "UNKNOWN"
         for token in ("GREEN", "YELLOW", "GRAY", "GREY", "RED"):
             if token in line.upper():
-                status = "GRAY" if token == "GREY" else token
+                status = "GRAY" if token == "GREY" else token  # nosec B105 - sapcontrol traffic-light colour, not a password
                 break
         # server0/server1 collapse to a stable key so ordering is deterministic.
         key = matched
