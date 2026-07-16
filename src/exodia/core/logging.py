@@ -12,10 +12,16 @@ import sys
 
 from rich.logging import RichHandler
 
-# Patterns whose values must never reach a log line.
+# Patterns whose values must never reach a log line. Kept deliberately broad:
+# a false redaction is harmless, a leaked SAP credential is not.
 _SECRET_PATTERNS = [
-    re.compile(r"(?i)(password|passwd|pwd|secret|key_?phrase|token)\s*[=:]\s*\S+"),
-    re.compile(r"(?i)(-p|--password)\s+\S+"),
+    # key=value / key: value forms (password, passphrase, key phrase, token, ...)
+    re.compile(
+        r"(?i)(password|passwd|pwd|secret|key[_-]?phrase|pass[_-]?phrase|token|api[_-]?key)"
+        r"\s*[=:]\s*\S+"
+    ),
+    # command-line password flags: -p / -P / --password <value> (ASE isql -P, etc.)
+    re.compile(r"(?i)(-p|--password|--pwd)\s+\S+"),
 ]
 
 
