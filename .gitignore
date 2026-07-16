@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Exodia runtime state — never committed (secrets, per-host config)
+.exodia/
+*.pkey
+inifile.params
+*.secret
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

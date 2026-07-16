@@ -1,0 +1,31 @@
+# SWPM / sapinst known errors -> cause + generic fix + SAP Note number.
+# IP rule: reference Note numbers only, never reproduce Note text.
+
+- pattern: "could not find (the )?package|SAPINST\\.CD\\.PACKAGE|media.*not found"
+  cause: "Media location incorrect or missing in inifile.params"
+  fix:
+    - "Check the SAPINST.CD.PACKAGE.<media> lines in inifile.params"
+    - "Confirm the media paths exist and are readable by the sidadm user"
+  sap_note: "2230669"
+
+- pattern: "instkey\\.pkey|could not decrypt|encrypted parameter"
+  cause: "instkey.pkey missing from the working directory (encrypted params cannot be decrypted)"
+  fix:
+    - "Ensure instkey.pkey is in the same directory as inifile.params"
+    - "Never commit or log instkey.pkey — it holds encrypted secrets"
+  sap_note: "2393060"
+
+- pattern: "SDT server|GUISERVER|guiserver.*not.*start|port.*already in use"
+  cause: "sapinst GUI server port conflict or stale sapinst process"
+  fix:
+    - "Kill stale sapinst processes and remove the sapinst_instdir lock"
+    - "Restart sapinst; optionally set SAPINST_START_GUISERVER per scenario"
+  sap_note: "2812637"
+
+- pattern: "phase .*failed|step .*ERROR|execute.*service.*error"
+  cause: "A SWPM step failed during Execute Service"
+  fix:
+    - "Inspect sapinst_dev.log for the failing task and root cause"
+    - "Fix the underlying issue, then restart from the same working directory (SWPM skips completed tasks)"
+    - "Do NOT use SAPINST_SKIP_ERRORSTEP unless directed by an SAP Note"
+  sap_note: "2568783"
