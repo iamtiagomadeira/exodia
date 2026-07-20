@@ -49,7 +49,10 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 ## Adding a methodology module
 
 The toolkit is plugable: a module dropped under `src/exodia/modules/` is
-auto-discovered. Each module exposes:
+auto-discovered. See the **[module authoring guide](docs/authoring-a-module.md)**
+for a full walkthrough with copy-pasteable Check and Action examples.
+
+Each module exposes:
 
 - **Checks** — read-only, safe to run anywhere. No side effects, ever.
 - **Actions** — state-changing, and always guarded: pre-checks → dry-run (default)
