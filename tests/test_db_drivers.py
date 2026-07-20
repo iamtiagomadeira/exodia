@@ -12,13 +12,13 @@ import pytest
 
 from exodia.core import Context, Status
 from exodia.core.shell import CommandResult, Runner
-from exodia.modules.backup_restore.db_drivers import (
+from exodia.modules.system_copy.backup_restore.db_drivers import (
     DBRestoreDriver,
     get_driver,
     supported_db_types,
 )
-from exodia.modules.backup_restore.db_drivers.ase import AseRestoreDriver
-from exodia.modules.backup_restore.db_drivers.hana import HanaRestoreDriver
+from exodia.modules.system_copy.backup_restore.db_drivers.ase import AseRestoreDriver
+from exodia.modules.system_copy.backup_restore.db_drivers.hana import HanaRestoreDriver
 
 
 class FakeRunner(Runner):

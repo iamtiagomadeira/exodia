@@ -11,8 +11,8 @@ from exodia.core import Context, Status
 from exodia.core.registry import registry
 from exodia.core.runner import run_action
 from exodia.core.shell import CommandResult, Runner
-from exodia.modules.tenant_copy.actions.copy_tenant import TenantCopyAction
-from exodia.modules.tenant_copy.actions.planner import (
+from exodia.modules.system_copy.tenant_copy.actions.copy_tenant import TenantCopyAction
+from exodia.modules.system_copy.tenant_copy.actions.planner import (
     TenantCopyPlanError,
     build_backup_plan,
     build_replication_plan,

@@ -11,7 +11,7 @@ from exodia.core import Context, Status
 from exodia.core.registry import registry
 from exodia.core.runner import run_action
 from exodia.core.shell import CommandResult, Runner
-from exodia.modules.backup_restore.actions.restore_database import RestoreDatabaseAction
+from exodia.modules.system_copy.backup_restore.actions.restore_database import RestoreDatabaseAction
 
 
 class FakeRunner(Runner):

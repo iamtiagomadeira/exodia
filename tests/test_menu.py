@@ -13,9 +13,12 @@ from exodia.core.menu import (
     checks_in,
     collect_params,
     discover_operations,
+    families,
     methodologies,
+    methodologies_in_family,
     params_for_checks,
     spec_for,
+    stack_blocks,
 )
 from exodia.core.params import ParamKind, ParamSpec
 from exodia.core.registry import registry
@@ -194,3 +197,52 @@ def test_params_for_checks_unions_and_dedupes() -> None:
 
 def test_params_for_checks_empty_when_no_checks() -> None:
     assert params_for_checks([], registry) == []
+
+
+# --------------------------------------------------------------------------- #
+# Umbrella families (System Copy groups its methods) + stack gating
+# --------------------------------------------------------------------------- #
+
+
+def test_families_groups_system_copy_methods() -> None:
+    ops = discover_operations(registry)
+    fams = families(ops)
+    # backup-restore and tenant-copy collapse into the "system-copy" family
+    assert "system-copy" in fams
+    assert "backup-restore" not in fams
+    assert "tenant-copy" not in fams
+
+
+def test_families_keeps_unmapped_methodology_standalone() -> None:
+    ops = discover_operations(registry)
+    fams = families(ops)
+    # pipo is not part of any umbrella -> stands on its own
+    assert "pipo" in fams
+
+
+def test_methodologies_in_family_returns_present_members_in_order() -> None:
+    ops = discover_operations(registry)
+    members = methodologies_in_family(ops, "system-copy")
+    # only methods actually discovered appear; order follows FAMILIES definition
+    assert "backup-restore" in members
+    assert "tenant-copy" in members
+    assert members.index("backup-restore") < members.index("tenant-copy")
+
+
+def test_methodologies_in_family_standalone() -> None:
+    ops = discover_operations(registry)
+    assert methodologies_in_family(ops, "pipo") == ["pipo"]
+
+
+def test_stack_blocks_java_backup_restore() -> None:
+    # SAP-mandated: Java cannot be copied via database backup/restore
+    reason = stack_blocks("java", "backup-restore")
+    assert reason is not None
+    assert "JLoad" in reason or "export/import" in reason
+
+
+def test_stack_blocks_allows_supported_combos() -> None:
+    # ABAP + backup/restore is fine; Java + tenant-copy has no block rule
+    assert stack_blocks("abap", "backup-restore") is None
+    assert stack_blocks("java", "tenant-copy") is None
+    assert stack_blocks("dual", "export-import") is None

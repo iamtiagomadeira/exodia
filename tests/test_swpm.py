@@ -16,7 +16,7 @@ from pathlib import Path
 from exodia.core import Context, Status
 from exodia.core.registry import registry
 from exodia.core.shell import CommandResult, Runner
-from exodia.modules.backup_restore.actions.swpm.planner import (
+from exodia.modules.system_copy.backup_restore.actions.swpm.planner import (
     GUI_SERVER_PORT,
     InifileError,
     RunState,
@@ -25,7 +25,7 @@ from exodia.modules.backup_restore.actions.swpm.planner import (
     parse_progress,
     validate_inifile,
 )
-from exodia.modules.backup_restore.actions.swpm_system_copy import SwpmSystemCopyAction
+from exodia.modules.system_copy.backup_restore.actions.swpm_system_copy import SwpmSystemCopyAction
 
 # A believable secret value that must never leak into any Result/argv/log.
 SECRET_PKEY_VALUE = "TOPSECRET-PKEY-DO-NOT-LEAK-abc123"

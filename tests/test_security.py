@@ -22,8 +22,8 @@ import pytest
 from exodia.core.context import Context
 from exodia.core.logging import RedactingFilter
 from exodia.core.shell import CommandResult, Runner, SSHRunner
-from exodia.modules.backup_restore.db_drivers.ase import AseRestoreDriver
-from exodia.modules.backup_restore.db_drivers.hana import HanaRestoreDriver
+from exodia.modules.system_copy.backup_restore.db_drivers.ase import AseRestoreDriver
+from exodia.modules.system_copy.backup_restore.db_drivers.hana import HanaRestoreDriver
 
 
 class _FakeRunner(Runner):

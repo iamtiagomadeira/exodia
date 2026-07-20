@@ -12,14 +12,18 @@ from .core import report
 from .core.context import Context
 from .core.logging import configure
 from .core.menu import (
+    STACKS,
     Operation,
     build_context,
     checks_in,
     collect_params,
     discover_operations,
-    methodologies,
+    families,
+    methodologies_in_family,
     params_for_checks,
+    pretty,
     spec_for,
+    stack_blocks,
 )
 from .core.registry import registry
 from .core.runner import run_action, run_checks
@@ -213,13 +217,39 @@ def menu() -> None:
         console.print("[yellow]No operations discovered yet.[/]")
         raise typer.Exit(0)
 
-    # Step 1: methodology
-    groups = methodologies(ops)
-    labels = [g.replace("-", " ").replace("_", " ").title() for g in groups]
-    g_idx = prompter.choose("Select a methodology", labels)
-    methodology = groups[g_idx]
+    # Step 1: umbrella family (e.g. "System Copy")
+    fams = families(ops)
+    fam_labels = [pretty(f) for f in fams]
+    f_idx = prompter.choose("Select a migration family", fam_labels)
+    family = fams[f_idx]
 
-    # Step 2: operation within the methodology (checks first — they're safe)
+    # Step 2: methodology within the family (skip prompt if only one)
+    methods = methodologies_in_family(ops, family)
+    if len(methods) == 1:
+        methodology = methods[0]
+    else:
+        m_labels = [pretty(m) for m in methods]
+        m_idx = prompter.choose(f"[{pretty(family)}] Select a method", m_labels)
+        methodology = methods[m_idx]
+
+    # Step 2b: stack gate — the SAP application-server stack constrains methods.
+    # If the chosen method is unsupported for the picked stack, block with the
+    # SAP-grounded reason instead of letting the operator run an invalid copy.
+    stack_labels = ["ABAP", "Java (AS Java)", "Dual-stack (ABAP+Java)", "Solution Manager"]
+    s_idx = prompter.choose(f"[{pretty(methodology)}] Which stack?", stack_labels)
+    stack = STACKS[s_idx]
+    block = stack_blocks(stack, methodology)
+    if block:
+        console.print(
+            Panel(
+                f"[red]Not supported by SAP[/]\n\n{block}",
+                title="⛔ Stack / method incompatible",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(2)
+
+    # Step 3: operation within the methodology (checks first — they're safe)
     group_ops = [o for o in ops if o.methodology == methodology]
     group_checks = checks_in(ops, methodology)
     run_all_label = (
@@ -229,7 +259,7 @@ def menu() -> None:
         f"{'🔍' if o.kind == 'check' else '⚙️ '} {o.name}  —  {o.description}"
         for o in group_ops
     ]
-    sel = prompter.choose(f"[{labels[g_idx]}] Select an operation", op_labels)
+    sel = prompter.choose(f"[{pretty(methodology)}] Select an operation", op_labels)
 
     # "Run all pre-checks" is offered as index 0 when the methodology has checks.
     if sel == 0 and group_checks:
@@ -239,6 +269,8 @@ def menu() -> None:
             f"for {methodology} (answer the combined fields once)"
         )
         fields, params = collect_params(specs, prompter)
+        # Thread the chosen stack through so checks/actions can adapt.
+        params.setdefault("stack", stack)
         ctx = build_context(fields, params, execute=False, assume_yes=False)
         check_objs = [
             cc() for c in group_checks if (cc := registry.get_check(c.name)) is not None
