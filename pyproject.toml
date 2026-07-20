@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "exodia"
 version = "0.1.0"
-description = "Stateless executor for SAP migration operations — checks & actions for HANA/ASE backup-restore, tenant copy, HSR, and Java PI/PO system copy."
+description = "Stateless executor for SAP migration operations — checks & actions for HANA/ASE backup-restore, tenant copy, HSR, and Java AS system copy."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

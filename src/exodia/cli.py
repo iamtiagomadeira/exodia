@@ -15,7 +15,7 @@ from .core.runner import run_action, run_checks
 
 app = typer.Typer(
     name="exodia",
-    help="Stateless executor for SAP migration operations (HANA/ASE, PI/PO Java).",
+    help="Stateless executor for SAP migration operations (HANA/ASE, Java AS).",
     no_args_is_help=True,
     add_completion=False,
 )
