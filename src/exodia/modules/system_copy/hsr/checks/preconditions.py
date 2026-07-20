@@ -212,3 +212,110 @@ class DistinctHostsCheck(Check):
             f"primary ({primary or '?'}) and secondary ({secondary}) are distinct",
             data={"primary": primary, "secondary": secondary},
         )
+
+
+class ReplicationStatusCheck(Check):
+    """Read the real replication state via systemReplicationStatus.py.
+
+    ``hdbnsutil -sr_state`` and ``systemReplicationStatus.py`` report the live
+    replication status. Before a takeover the secondary must be fully caught up
+    (overall status ``ACTIVE``); ``SYNCING``/``ERROR`` means a takeover would
+    lose data. This is the difference between "a port is open" and "replication
+    is actually healthy".
+
+    Read-only: it only queries status.
+    """
+
+    name = "hsr.replication-status"
+    description = "System replication overall status is ACTIVE (caught up)."
+    blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [INSTANCE]
+
+    def run(self, ctx: Context) -> Result:
+        inst = str(ctx.get("instance") or "00").zfill(2)
+        # The canonical tool returns exit code 15 when ACTIVE, and prints an
+        # "overall system replication status: <STATE>" line.
+        script = f"/usr/sap/*/HDB{inst}/exe/python_support/systemReplicationStatus.py"
+        cr = _run(ctx, ["sh", "-c", f"python3 {script} 2>&1 || true"])
+        text = (cr.stdout or "") + (cr.stderr or "")
+        if not text.strip():
+            # Fall back to hdbnsutil which every HANA install ships.
+            cr = _run(ctx, ["sh", "-c", "hdbnsutil -sr_state 2>&1 || true"])
+            text = (cr.stdout or "") + (cr.stderr or "")
+        if not text.strip():
+            return Result.skip(
+                self.name,
+                "could not read replication status (run on the primary as <sid>adm; "
+                "systemReplicationStatus.py / hdbnsutil not reachable)",
+            )
+        low = text.lower()
+        m = re.search(r"overall system replication status:\s*(\w+)", low)
+        state = m.group(1).upper() if m else None
+        if state == "ACTIVE" or "mode: primary" in low and "active" in low:
+            return Result.ok(
+                self.name,
+                f"replication overall status is {state or 'ACTIVE'} (secondary caught up)",
+                data={"status": state or "ACTIVE"},
+            )
+        if state in {"SYNCING", "INITIALIZING", "SYNCING_FULL", "UNKNOWN", "ERROR"}:
+            return Result.fail(
+                self.name,
+                f"replication status is {state}, not ACTIVE — do NOT take over until "
+                "the secondary is fully caught up or you will lose data",
+                data={"status": state},
+            )
+        return Result.warn(
+            self.name,
+            "could not parse a clear replication status; inspect "
+            "systemReplicationStatus.py output manually before takeover",
+            detail=text.strip()[:500],
+            data={"status": state},
+        )
+
+
+class DataBackupExistsCheck(Check):
+    """A full data backup must exist before replication can be enabled.
+
+    HANA refuses to register a secondary unless the primary has at least one
+    full data backup (the log position the secondary starts from). This queries
+    the backup catalog rather than assuming.
+
+    Read-only.
+    """
+
+    name = "hsr.data-backup-exists"
+    description = "Primary has a full data backup (required to enable HSR)."
+    blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [PRIMARY_KEY]
+
+    def run(self, ctx: Context) -> Result:
+        key = ctx.get("primary_userstore_key") or "SYSTEMDB"
+        stmt = (
+            "SELECT COUNT(*) FROM M_BACKUP_CATALOG "
+            "WHERE ENTRY_TYPE_NAME='complete data backup' AND STATE_NAME='successful'"
+        )
+        cr = _run(ctx, _hdbsql(key, stmt))
+        if not cr.ok:
+            return Result.skip(
+                self.name,
+                "could not read the backup catalog on the primary",
+                detail=cr.stderr or cr.stdout,
+            )
+        digits = re.search(r"\d+", cr.stdout or "")
+        count = int(digits.group(0)) if digits else 0
+        if count == 0:
+            return Result.fail(
+                self.name,
+                "primary has no successful full data backup — take one "
+                "(BACKUP DATA USING FILE) before enabling system replication",
+                data={"backup_count": count},
+            )
+        return Result.ok(
+            self.name,
+            f"primary has {count} successful full data backup(s)",
+            data={"backup_count": count},
+        )

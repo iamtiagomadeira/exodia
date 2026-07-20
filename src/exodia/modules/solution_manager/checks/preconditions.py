@@ -49,6 +49,17 @@ LMDB_HOST = ParamSpec(
     "LMDB host",
     help="Landscape Management Database host (usually the SolMan itself).",
 )
+MANAGED_HOST = ParamSpec(
+    "managed_host",
+    "Managed system host",
+    help="A managed system that must be reachable via RFC/HTTP after the copy.",
+)
+MANAGED_INSTANCE = ParamSpec(
+    "managed_instance",
+    "Managed system instance number",
+    default="00",
+    help="Two digits; the gateway port 33<nn> is derived from it.",
+)
 
 
 def _run(ctx: Context, argv: list[str], timeout: int = 60):  # type: ignore[no-untyped-def]
@@ -176,4 +187,56 @@ class NoStaleSourceRegistrationCheck(Check):
             "LMDB and re-run the copied system's SLD data supplier so only the new "
             f"SID ({sid or '?'}) is registered",
             data={"sid": sid},
+        )
+
+
+class ManagedSystemConnectivityCheck(Check):
+    """RFC/HTTP to a managed system must work after the copy.
+
+    Post-copy, SolMan re-establishes its connections to the managed systems.
+    The SAP gateway listens on ``33<nn>`` (nn = instance) and the ICM HTTP on
+    ``8<nn>00``. If neither is reachable, PCA/monitoring steps that depend on
+    the managed system will fail. This probes the real gateway port instead of
+    assuming reachability.
+
+    Read-only.
+    """
+
+    name = "solution-manager.managed-system-connectivity"
+    description = "Managed system reachable via SAP gateway (33<nn>) after copy."
+    blocking = False
+
+    def parameters(self) -> list[ParamSpec]:
+        return [MANAGED_HOST, MANAGED_INSTANCE]
+
+    def run(self, ctx: Context) -> Result:
+        host = ctx.get("managed_host")
+        if not host:
+            return Result.skip(
+                self.name, "no managed_host given; cannot probe managed-system RFC"
+            )
+        inst = str(ctx.get("managed_instance") or "00").zfill(2)
+        gw_port = int(f"33{inst}")
+        cr = _run(ctx, ["nc", "-z", "-w", "5", str(host), str(gw_port)])
+        if cr.ok:
+            return Result.ok(
+                self.name,
+                f"managed system {host} reachable on SAP gateway {gw_port}",
+                data={"managed_host": host, "gateway_port": gw_port},
+            )
+        # Gateway closed — try the ICM HTTP port before failing.
+        http_port = int(f"8{inst}00")
+        cr_http = _run(ctx, ["nc", "-z", "-w", "5", str(host), str(http_port)])
+        if cr_http.ok:
+            return Result.warn(
+                self.name,
+                f"managed system {host} gateway {gw_port} is closed but HTTP "
+                f"{http_port} is open — verify RFC connectivity for PCA/monitoring",
+                data={"managed_host": host, "gateway_port": gw_port, "http_port": http_port},
+            )
+        return Result.fail(
+            self.name,
+            f"managed system {host} unreachable on gateway {gw_port} and HTTP "
+            f"{http_port} — SolMan cannot manage it until connectivity is restored",
+            data={"managed_host": host, "gateway_port": gw_port, "http_port": http_port},
         )
