@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from .context import Context
 from .knowledge import enrich
 from .logging import get_logger
+from .params import ParamSpec
 from .result import Result
 
 log = get_logger()
@@ -33,6 +34,15 @@ class Check(ABC):
     def run(self, ctx: Context) -> Result:
         """Perform the validation and return a structured Result."""
         ...
+
+    def parameters(self) -> list[ParamSpec]:
+        """Inputs this check needs. Override to drive the interactive menu.
+
+        Default: no declared inputs. The wizard still offers the common
+        connection fields and the free-form escape hatch, so undeclared
+        operations keep working.
+        """
+        return []
 
     def execute(self, ctx: Context) -> Result:
         """Wrapper: runs the check, catches exceptions, enriches from KB."""
@@ -60,6 +70,14 @@ class Action(ABC):
     def dry_run(self, ctx: Context) -> Result:
         """Describe exactly what execute() would do, without doing it."""
         ...
+
+    def parameters(self) -> list[ParamSpec]:
+        """Inputs this action needs. Override to drive the interactive menu.
+
+        Default: no declared inputs. The wizard still offers the common
+        connection fields and the free-form escape hatch.
+        """
+        return []
 
     @abstractmethod
     def execute(self, ctx: Context) -> Result:

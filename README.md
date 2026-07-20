@@ -50,6 +50,16 @@ pip install -e ".[tui]"
 
 ## Usage
 
+The easiest way in — an interactive wizard. No long commands, no YAML to
+hand-craft: pick a methodology, pick an operation, answer only the fields it
+needs (with defaults and inline help), then review and confirm.
+
+```bash
+exodia menu                              # guided, operator-friendly front door
+```
+
+Prefer a direct command? Every operation is still scriptable by name:
+
 ```bash
 exodia list                              # show all discovered checks & actions
 exodia run core.free-space --config my.yaml
@@ -58,7 +68,8 @@ exodia run backup-restore.restore-db --db-type hana --execute --yes
 exodia doctor                            # self-check
 ```
 
-Dry-run is the default for actions. Pass `--execute --yes` to actually run.
+Dry-run is the default for actions. Pass `--execute --yes` to actually run (the
+wizard asks you to confirm both, so nothing runs by accident).
 Exit codes are automation-friendly: `0` = nothing blocking, `1` = a blocking failure.
 
 ## Example: a guarded HANA restore

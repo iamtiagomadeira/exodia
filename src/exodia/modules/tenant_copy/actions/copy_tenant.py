@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from exodia.core import Context, Result
 from exodia.core.base import Action
+from exodia.core.params import DB_TYPE, HOST, USER, ParamKind, ParamSpec
 
 from .planner import (
     TenantCopyPlan,
@@ -46,6 +47,53 @@ class TenantCopyAction(Action):
         "tenant-copy.hana.version-match",
         "tenant-copy.hana.target-data-space",
     ]
+
+    def parameters(self) -> list[ParamSpec]:
+        return [
+            HOST,
+            USER,
+            DB_TYPE.with_default("hana"),
+            ParamSpec(
+                "copy_method", "Copy method", default="replication",
+                choices=("replication", "backup"),
+                help="replication = low-downtime cross-host (HEC); backup = recover a shipped backup set.",
+            ),
+            ParamSpec(
+                "source", "Source tenant name (customer)", required=True,
+                kind=ParamKind.FIELD, help="The tenant DB to copy FROM, e.g. PRD.",
+            ),
+            ParamSpec(
+                "target", "Target tenant name (new)", required=True,
+                kind=ParamKind.FIELD, help="The new tenant DB to create, e.g. QAS.",
+            ),
+            ParamSpec(
+                "target_userstore_key", "Target SYSTEMDB hdbuserstore key",
+                default="SYSTEMDB",
+                help="hdbsql -U key for the TARGET SYSTEMDB (no password on the CLI).",
+            ),
+            # replication-method inputs
+            ParamSpec(
+                "source_host", "Source SYSTEMDB host (replication)",
+                help="Customer HANA host the target replicates from. Required for replication.",
+            ),
+            ParamSpec(
+                "source_instance", "Source instance number (replication)", default="00",
+                help="Two digits; the source SQL port 3<nn>13 is derived from it.",
+            ),
+            # backup-method inputs
+            ParamSpec(
+                "catalog_path", "Backup catalog path (backup method)",
+                help="Path to the source backup catalog. Required for the backup method.",
+            ),
+            ParamSpec(
+                "data_path", "Backup data path (backup method)",
+                help="Path to the source data backup. Required for the backup method.",
+            ),
+            ParamSpec(
+                "log_backup_path", "Backup log path (backup method)",
+                help="Path to the source log backups; defaults to the data path.",
+            ),
+        ]
 
     # --- parameter resolution -------------------------------------------------
 
