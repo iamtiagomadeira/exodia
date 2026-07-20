@@ -1,7 +1,7 @@
 # Exodia
 
 > Stateless executor for SAP migration operations — checks & actions for HANA/ASE
-> backup-restore, tenant copy, HANA System Replication (HSR), and Java PI/PO system copy.
+> backup-restore, tenant copy, HANA System Replication (HSR), and Java (AS Java) system copy.
 
 Exodia is a lightweight, plugable command-line tool that automates the repetitive,
 error-prone parts of SAP system migrations. It runs on any Linux server, needs no
@@ -11,7 +11,7 @@ dry-run, confirmation, verification, and documented rollback.
 
 ## Why
 
-SAP migrations (backup/restore, tenant copy, HSR setup, PI/PO system copy) are
+SAP migrations (backup/restore, tenant copy, HSR setup, Java system copy) are
 largely manual today — consultants babysit `sapinst` screens for hours and run
 prerequisite checks by hand. Exodia turns that into repeatable, monitored, auditable
 automation while keeping the human in control for the decisions that matter.
@@ -56,7 +56,7 @@ Exit codes are automation-friendly: `0` = nothing blocking, `1` = a blocking fai
 ## Status
 
 Alpha. Core is stable; methodology modules (backup/restore for HANA & ASE, and
-Java PI/PO system copy) are under active development. See the Linear project for the
+Java (AS Java) system copy) are under active development. See the Linear project for the
 roadmap.
 
 ## Supported scenarios (target)
@@ -66,7 +66,7 @@ roadmap.
 | Backup / Restore | HANA, SAP ASE | via native tools + SWPM system copy |
 | Tenant Copy | HANA | TLS/SSL, SYSTEMDB cert handling |
 | HANA System Replication | HANA | create / finalize / enable replica |
-| PI/PO Java system copy | HANA | SLD, SECSTORE, RFC, UME post-copy |
+| Java (AS Java) system copy | HANA | SLD, SECSTORE, RFC, UME post-copy (PI/PO validated first) |
 
 ## License
 
