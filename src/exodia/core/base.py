@@ -10,6 +10,7 @@ This distinction is the safety backbone of Exodia.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
 
 from .context import Context
 from .knowledge import enrich
@@ -46,11 +47,13 @@ class Check(ABC):
 
     def execute(self, ctx: Context) -> Result:
         """Wrapper: runs the check, catches exceptions, enriches from KB."""
+        started = datetime.now(UTC)
         try:
             result = self.run(ctx)
         except Exception as exc:  # noqa: BLE001 - convert to structured ERROR
             log.exception("check %s raised", self.name)
             result = Result.error(self.name, f"unexpected error: {exc}")
+        result.stamp_timing(started, datetime.now(UTC))
         if result.status.is_blocking:
             enrich(result, ctx)
         return result
@@ -126,9 +129,10 @@ class Action(ABC):
 
     @staticmethod
     def _safe(fn, ctx: Context, name: str) -> Result:  # type: ignore[no-untyped-def]
+        started = datetime.now(UTC)
         try:
             result: Result = fn(ctx)
-            return result
         except Exception as exc:  # noqa: BLE001
             log.exception("%s raised", name)
-            return Result.error(name, f"unexpected error: {exc}")
+            result = Result.error(name, f"unexpected error: {exc}")
+        return result.stamp_timing(started, datetime.now(UTC))

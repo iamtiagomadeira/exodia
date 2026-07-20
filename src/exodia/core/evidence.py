@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from .context import Context
     from .result import Result
 
+from .result import format_duration
+
 log = get_logger()
 
 _DEFAULT_ROOT = Path("evidence")
@@ -145,6 +147,9 @@ class EvidenceBundle:
                 name=r.name,
                 status=r.status.value,
                 summary=r.summary,
+                started_at=r.started_at.isoformat() if r.started_at else None,
+                ended_at=r.ended_at.isoformat() if r.ended_at else None,
+                duration_seconds=r.duration_seconds,
             )
 
     def attach(self, source: Path | str, *, caption: str = "") -> Path:
@@ -172,13 +177,18 @@ class EvidenceBundle:
         )
 
     def _write_report(self) -> None:
+        op_started, op_ended, op_duration = self._operation_timing()
         lines = [
             f"# Migration evidence — {self.methodology}",
             "",
             f"- **Operation:** {self.operation or '(pre-checks)'}",
-            f"- **When (UTC):** {self._started.isoformat()}",
-            f"- **Operator:** {self._operator()}",
+            f"- **Started (UTC):** {op_started.isoformat() if op_started else self._started.isoformat()}",
         ]
+        if op_ended is not None:
+            lines.append(f"- **Ended (UTC):** {op_ended.isoformat()}")
+        if op_duration is not None:
+            lines.append(f"- **Duration:** {format_duration(op_duration)}")
+        lines.append(f"- **Operator:** {self._operator()}")
         if self._ctx is not None:
             src = getattr(self._ctx, "source", None)
             tgt = getattr(self._ctx, "target", None)
@@ -189,10 +199,18 @@ class EvidenceBundle:
             if sid:
                 lines.append(f"- **SID:** {sid}")
             lines.append(f"- **Host:** {host}")
-        lines += ["", "## Results", "", "| Check / phase | Status | Summary |", "|---|---|---|"]
+        lines += [
+            "",
+            "## Results",
+            "",
+            "| Check / phase | Status | Duration | Summary |",
+            "|---|---|---|---|",
+        ]
         for r in self._results:
             summary = r.summary.replace("|", "\\|")
-            lines.append(f"| {r.name} | {r.status.value.upper()} | {summary} |")
+            lines.append(
+                f"| {r.name} | {r.status.value.upper()} | {r.duration_str} | {summary} |"
+            )
         lines.append("")
         (self.dir / "report.md").write_text("\n".join(lines), encoding="utf-8")
 
@@ -207,6 +225,7 @@ class EvidenceBundle:
                         "bytes": f.stat().st_size,
                     }
                 )
+        op_started, op_ended, op_duration = self._operation_timing()
         manifest = {
             "schema": "exodia.evidence/v1",
             "methodology": self.methodology,
@@ -216,6 +235,12 @@ class EvidenceBundle:
             "hostname": platform.node(),
             "started": self._started.isoformat(),
             "sealed": datetime.now(UTC).isoformat(),
+            # Exact span of the actual work (first phase start -> last phase end),
+            # distinct from ``sealed`` (when the bundle was written to disk).
+            "operation_started": op_started.isoformat() if op_started else None,
+            "operation_ended": op_ended.isoformat() if op_ended else None,
+            "duration_seconds": op_duration,
+            "duration_str": format_duration(op_duration),
             "context": self._context_summary(),
             "results_count": len(self._results),
             "artifacts": artifacts,
@@ -223,6 +248,22 @@ class EvidenceBundle:
         (self.dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, default=str), encoding="utf-8"
         )
+
+    def _operation_timing(
+        self,
+    ) -> tuple[datetime | None, datetime | None, float | None]:
+        """Real start/end/duration of the work, derived from timed results.
+
+        Start = earliest ``started_at``; end = latest ``ended_at``. Duration is
+        the wall-clock span between them (not the sum of phases), which is what
+        an auditor means by "how long did the migration take".
+        """
+        starts = [r.started_at for r in self._results if r.started_at is not None]
+        ends = [r.ended_at for r in self._results if r.ended_at is not None]
+        if not starts or not ends:
+            return None, None, None
+        first, last = min(starts), max(ends)
+        return first, last, max(0.0, (last - first).total_seconds())
 
     def _context_summary(self) -> dict:
         if self._ctx is None:
@@ -302,6 +343,45 @@ def find_latest_bundle(root: Path | str = _DEFAULT_ROOT) -> Path | None:
     return candidates[-1][1]
 
 
+def list_bundles(root: Path | str = _DEFAULT_ROOT) -> list[dict]:
+    """Return a summary of every evidence bundle under ``root``, newest first.
+
+    Each entry carries the fields needed to answer "when did each migration
+    start, end and how long did it take": ``dir``, ``methodology``,
+    ``operation``, ``sid``, ``operator``, ``started``, ``ended``,
+    ``duration_seconds``, ``duration_str`` and ``results_count``.
+    """
+    r = Path(root)
+    if not r.is_dir():
+        return []
+    rows: list[dict] = []
+    for manifest_path in r.rglob("manifest.json"):
+        d = manifest_path.parent
+        try:
+            m = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        ctx = m.get("context", {}) or {}
+        started = m.get("operation_started") or m.get("started")
+        rows.append(
+            {
+                "dir": str(d),
+                "methodology": m.get("methodology", "?"),
+                "operation": m.get("operation") or "(pre-checks)",
+                "sid": ctx.get("sid"),
+                "operator": m.get("operator"),
+                "started": started,
+                "ended": m.get("operation_ended"),
+                "duration_seconds": m.get("duration_seconds"),
+                "duration_str": m.get("duration_str") or format_duration(m.get("duration_seconds")),
+                "results_count": m.get("results_count", 0),
+                "sealed": m.get("sealed", ""),
+            }
+        )
+    rows.sort(key=lambda x: x.get("started") or x.get("sealed") or "", reverse=True)
+    return rows
+
+
 _HTML_STATUS_COLOR = {
     "pass": "#1a7f37",
     "warn": "#9a6700",
@@ -336,20 +416,24 @@ def render_html(bundle_dir: Path | str) -> str:
     for r in results:
         status = str(r.get("status", "")).lower()
         color = _HTML_STATUS_COLOR.get(status, "#57606a")
+        dur = format_duration(r.get("duration_seconds"))
         rows.append(
             f'<tr><td class="name">{esc(r.get("name"))}</td>'
             f'<td><span class="badge" style="background:{color}">'
             f"{esc(status.upper())}</span></td>"
+            f'<td class="dur">{esc(dur)}</td>'
             f'<td>{esc(r.get("summary"))}</td></tr>'
         )
-    rows_html = "\n".join(rows) or '<tr><td colspan="3">No results recorded.</td></tr>'
+    rows_html = "\n".join(rows) or '<tr><td colspan="4">No results recorded.</td></tr>'
 
     meta = [
         ("Methodology", manifest.get("methodology")),
         ("Operation", manifest.get("operation") or "(pre-checks)"),
         ("Operator", manifest.get("operator")),
         ("Hostname", manifest.get("hostname")),
-        ("Started", manifest.get("started")),
+        ("Started", manifest.get("operation_started") or manifest.get("started")),
+        ("Ended", manifest.get("operation_ended")),
+        ("Duration", manifest.get("duration_str")),
         ("Sealed", manifest.get("sealed")),
         ("Tool version", manifest.get("tool_version")),
         ("SID", ctx.get("sid")),
@@ -374,13 +458,14 @@ def render_html(bundle_dir: Path | str) -> str:
   th,td {{ text-align: left; padding:.5rem .6rem; border-bottom: 1px solid #d0d7de; }}
   th {{ background:#f6f8fa; }}
   td.name {{ font-family: ui-monospace,SFMono-Regular,monospace; font-size:.9em; }}
+  td.dur {{ font-variant-numeric: tabular-nums; color:#57606a; white-space:nowrap; }}
   .badge {{ color:#fff; padding:.1rem .5rem; border-radius: 2rem; font-size:.8em;
             font-weight:600; }}
   footer {{ margin-top: 2rem; color:#57606a; font-size:.85em; }}
 </style></head><body>
 <h1>Migration evidence — {esc(manifest.get("methodology"))}</h1>
 <dl>{meta_html}</dl>
-<table><thead><tr><th>Check / phase</th><th>Status</th><th>Summary</th></tr></thead>
+<table><thead><tr><th>Check / phase</th><th>Status</th><th>Duration</th><th>Summary</th></tr></thead>
 <tbody>
 {rows_html}
 </tbody></table>

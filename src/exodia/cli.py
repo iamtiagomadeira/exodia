@@ -16,6 +16,7 @@ from .core.context import ConfigError, Context
 from .core.evidence import (
     EvidenceBundle,
     find_latest_bundle,
+    list_bundles,
     render_html,
     verify_bundle,
 )
@@ -479,6 +480,46 @@ def report_cmd(
     console.print(f"[green]✅ report written[/] from {d}:")
     for p in written:
         console.print(f"  • {p}")
+
+
+@app.command(name="history")
+def history_cmd(
+    limit: int = typer.Option(20, "--limit", "-n", help="Max runs to show."),
+    root: str = typer.Option("evidence", "--root", help="Evidence root directory."),
+) -> None:
+    """List past migration runs with their exact start, end and duration.
+
+    Reads every evidence bundle under the evidence root and prints a table
+    (newest first) so you can answer 'when did that migration start/end and how
+    long did it take' retroactively — the audit clock, persisted.
+    """
+    rows = list_bundles(root)
+    if not rows:
+        console.print(
+            f"[yellow]no evidence bundles under[/] {root!r} — run a check/action first."
+        )
+        raise typer.Exit(0)
+
+    table = Table(show_header=True, header_style="bold", title="Migration history")
+    table.add_column("started (UTC)")
+    table.add_column("methodology")
+    table.add_column("operation")
+    table.add_column("SID")
+    table.add_column("duration", justify="right")
+    table.add_column("results", justify="right")
+    for r in rows[: max(1, limit)]:
+        started = (r.get("started") or "—").replace("T", " ").replace("+00:00", "")
+        table.add_row(
+            started,
+            str(r.get("methodology") or "?"),
+            str(r.get("operation") or ""),
+            str(r.get("sid") or "—"),
+            str(r.get("duration_str") or "—"),
+            str(r.get("results_count") or 0),
+        )
+    console.print(table)
+    if len(rows) > limit:
+        console.print(f"[dim]… {len(rows) - limit} older run(s) not shown (use --limit).[/]")
 
 
 if __name__ == "__main__":

@@ -42,6 +42,12 @@ class Result(BaseModel):
     # Free-form structured data (e.g. measured free space, versions).
     data: dict = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Exact timing of the underlying work. ``execute`` phases of an action can
+    # run for hours (SWPM restore), so an auditor needs the real start, end and
+    # duration — not just when the object was created.
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_seconds: float | None = None
 
     @classmethod
     def ok(cls, name: str, summary: str = "", **kw: object) -> Result:
@@ -62,3 +68,39 @@ class Result(BaseModel):
     @classmethod
     def error(cls, name: str, summary: str, **kw: object) -> Result:
         return cls(name=name, status=Status.ERROR, summary=summary, **kw)  # type: ignore[arg-type]
+
+    def stamp_timing(self, started_at: datetime, ended_at: datetime) -> Result:
+        """Record the real start/end of the work this Result represents.
+
+        Called by the runner/guard around each check and action phase so the
+        exact wall-clock span (and duration) is preserved in evidence.
+        """
+        self.started_at = started_at
+        self.ended_at = ended_at
+        self.duration_seconds = max(0.0, (ended_at - started_at).total_seconds())
+        return self
+
+    @property
+    def duration_str(self) -> str:
+        """Human-readable duration, e.g. ``2h 14m 08s`` or ``850ms``."""
+        return format_duration(self.duration_seconds)
+
+
+def format_duration(seconds: float | None) -> str:
+    """Format a span of seconds as a compact, audit-friendly string.
+
+    ``None`` -> ``"—"``; sub-second -> ``"850ms"``; otherwise
+    ``"[Nh ]Mm SSs"`` (hours only when non-zero).
+    """
+    if seconds is None:
+        return "—"
+    if seconds < 1:
+        return f"{int(seconds * 1000)}ms"
+    total = int(round(seconds))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"

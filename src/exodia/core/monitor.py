@@ -29,16 +29,18 @@ Upgrade path to Textual (TIA-66):
 from __future__ import annotations
 
 from collections import deque
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Protocol, runtime_checkable
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
+from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
-from .result import Result, Status
+from .result import Result, Status, format_duration
 
 _STATUS_STYLE = {
     Status.PASS: "bold green",
@@ -63,6 +65,7 @@ class Monitor(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def phase(self, name: str, detail: str = "") -> None: ...
+    def progress(self, percent: float | None, detail: str = "") -> None: ...
     def log_line(self, line: str) -> None: ...
     def result(self, result: Result) -> None: ...
     def handoff(self, message: str, url: str | None = None) -> None: ...
@@ -85,6 +88,9 @@ class NullMonitor:
         pass
 
     def phase(self, name: str, detail: str = "") -> None:
+        pass
+
+    def progress(self, percent: float | None, detail: str = "") -> None:
         pass
 
     def log_line(self, line: str) -> None:
@@ -133,7 +139,13 @@ class RichMonitor:
         self._results: list[Result] = []
         self._phase = "starting…"
         self._phase_detail = ""
+        self._percent: float | None = None
+        self._progress_detail = ""
         self._handoff: tuple[str, str | None] | None = None
+        # Wall-clock timing so an auditor can see exactly when the operation
+        # started, how long it has been running, and how long each phase took.
+        self._started_at = datetime.now(UTC)
+        self._phase_started_at = self._started_at
         self._live = Live(
             self._render(),
             console=self.console,
@@ -143,6 +155,9 @@ class RichMonitor:
 
     # -- lifecycle ---------------------------------------------------------- #
     def start(self) -> None:
+        now = datetime.now(UTC)
+        self._started_at = now
+        self._phase_started_at = now
         self._live.start()
 
     def stop(self) -> None:
@@ -165,6 +180,20 @@ class RichMonitor:
     def phase(self, name: str, detail: str = "") -> None:
         self._phase = name
         self._phase_detail = detail
+        self._phase_started_at = datetime.now(UTC)
+        # A new phase resets the progress bar (percent is phase-scoped).
+        self._percent = None
+        self._progress_detail = ""
+        self._refresh()
+
+    def progress(self, percent: float | None, detail: str = "") -> None:
+        """Set the completion percentage of the current phase (0–100).
+
+        Call with the value parsed from the native tool (e.g. SWPM prints
+        ``... 42%`` during recovery). ``None`` hides the bar (indeterminate).
+        """
+        self._percent = None if percent is None else max(0.0, min(100.0, percent))
+        self._progress_detail = detail
         self._refresh()
 
     def log_line(self, line: str) -> None:
@@ -188,13 +217,25 @@ class RichMonitor:
 
     def _render(self) -> Group:
         parts: list[RenderableType] = []
+        now = datetime.now(UTC)
 
         phase = Text()
         phase.append("▶ ", style="cyan")
         phase.append(self._phase, style="bold")
         if self._phase_detail:
-            phase.append(f"  {self._phase_detail}", style="dim")
+            phase.append(f" — {self._phase_detail}", style="dim")
+        # Per-phase stopwatch: how long the current phase has been running.
+        phase_elapsed = (now - self._phase_started_at).total_seconds()
+        phase.append(f"  ({format_duration(phase_elapsed)})", style="cyan")
         parts.append(phase)
+
+        # Determinate progress bar when the native tool reports a percentage.
+        if self._percent is not None:
+            bar = ProgressBar(total=100, completed=self._percent, width=40)
+            label = Text(f" {self._percent:5.1f}%", style="bold cyan")
+            if self._progress_detail:
+                label.append(f"  {self._progress_detail}", style="dim")
+            parts.append(Group(bar, label))
 
         if self._log:
             log_text = Text("\n".join(self._log), style="grey70")
@@ -204,6 +245,7 @@ class RichMonitor:
             table = Table(show_header=True, header_style="bold", expand=True)
             table.add_column("status", width=8)
             table.add_column("name")
+            table.add_column("duration", width=10, justify="right")
             table.add_column("summary", overflow="fold")
             for r in self._results:
                 icon = _STATUS_ICON.get(r.status, "")
@@ -211,6 +253,7 @@ class RichMonitor:
                 table.add_row(
                     Text(f"{icon} {r.status.value}", style=style),
                     r.name,
+                    Text(r.duration_str, style="dim"),
                     r.summary,
                 )
             parts.append(table)
@@ -225,8 +268,17 @@ class RichMonitor:
                 banner.append(url, style="underline cyan")
             parts.append(Panel(banner, border_style="yellow"))
 
+        # Title bar carries the audit clock: exact start + running elapsed.
+        elapsed = (now - self._started_at).total_seconds()
+        header = Text()
+        header.append(self.title, style="bold white")
+        header.append(
+            f"\n⏱ started {self._started_at.strftime('%Y-%m-%d %H:%M:%SZ')}"
+            f" · elapsed {format_duration(elapsed)}",
+            style="cyan",
+        )
         return Group(
-            Panel(Text(self.title, style="bold white"), border_style="cyan"),
+            Panel(header, border_style="cyan"),
             *parts,
         )
 
