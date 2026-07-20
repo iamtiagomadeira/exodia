@@ -10,7 +10,12 @@ from rich.table import Table
 from . import __version__
 from .core import report
 from .core.context import Context
-from .core.evidence import EvidenceBundle, verify_bundle
+from .core.evidence import (
+    EvidenceBundle,
+    find_latest_bundle,
+    render_html,
+    verify_bundle,
+)
 from .core.logging import configure
 from .core.menu import (
     STACKS,
@@ -392,6 +397,56 @@ def evidence_attach(
     manifest.setdefault("attachments", []).append({"file": src.name, "caption": caption})
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
     console.print(f"[green]✅ attached[/] {src.name} → {dest.parent}")
+
+
+@app.command(name="report")
+def report_cmd(
+    bundle_dir: str = typer.Argument(
+        "", help="Evidence bundle to render. Omit to use the most recent one."
+    ),
+    fmt: str = typer.Option(
+        "both", "--format", "-f", help="Output format: html, md, or both."
+    ),
+    out: str = typer.Option("", "--out", "-o", help="Output path/prefix (no extension)."),
+) -> None:
+    """Render a run's evidence bundle as a shareable HTML + Markdown summary.
+
+    Reads the sealed bundle (manifest + results) and writes standalone files —
+    handy for handover docs and build-in-public screenshots. The Markdown is the
+    bundle's own report.md; the HTML is generated inline (no external assets).
+    """
+    from pathlib import Path
+
+    d = Path(bundle_dir) if bundle_dir else find_latest_bundle()
+    if d is None:
+        console.print(
+            "[red]no evidence bundle found[/] — run a check/action first, "
+            "or pass a bundle directory explicitly."
+        )
+        raise typer.Exit(1)
+    if not (d / "manifest.json").is_file():
+        console.print(f"[red]not an evidence bundle:[/] {d}")
+        raise typer.Exit(1)
+
+    prefix = Path(out) if out else Path.cwd() / f"exodia-report-{d.name}"
+    fmt = fmt.lower()
+    written: list[Path] = []
+    if fmt in ("md", "both"):
+        md_src = d / "report.md"
+        md_dest = prefix.with_suffix(".md")
+        if md_dest.resolve() != md_src.resolve():
+            md_dest.write_text(md_src.read_text(), encoding="utf-8")
+        written.append(md_dest)
+    if fmt in ("html", "both"):
+        html_dest = prefix.with_suffix(".html")
+        html_dest.write_text(render_html(d), encoding="utf-8")
+        written.append(html_dest)
+    if not written:
+        console.print(f"[red]unknown format:[/] {fmt} (use html, md, or both)")
+        raise typer.Exit(1)
+    console.print(f"[green]✅ report written[/] from {d}:")
+    for p in written:
+        console.print(f"  • {p}")
 
 
 if __name__ == "__main__":

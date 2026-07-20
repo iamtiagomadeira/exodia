@@ -195,3 +195,63 @@ def test_lmdb_skips_without_host() -> None:
 def test_no_stale_registration_always_warns() -> None:
     ctx = _ctx(FakeRunner(), sid="SOL")
     assert NoStaleSourceRegistrationCheck().run(ctx).status is Status.WARN
+
+
+# --------------------------------------------------------------------------- #
+# report rendering (TIA-67): find_latest_bundle + render_html
+# --------------------------------------------------------------------------- #
+
+
+def _make_bundle(root, methodology="tenant-copy", sid="PRD"):  # type: ignore[no-untyped-def]
+    from exodia.core.evidence import EvidenceBundle
+    from exodia.core.result import Result
+
+    bundle = EvidenceBundle(methodology, None, root=root)
+    ctx_dir = bundle.open()
+    ctx_dir.add_results(
+        [Result.ok("demo.check", "all good"), Result.fail("demo.block", "nope")]
+    )
+    bundle.close()
+    return bundle.dir
+
+
+def test_find_latest_bundle_none_when_empty(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from exodia.core.evidence import find_latest_bundle
+
+    assert find_latest_bundle(tmp_path / "nothing") is None
+
+
+def test_find_latest_bundle_picks_most_recent(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from exodia.core.evidence import find_latest_bundle
+
+    root = tmp_path / "evidence"
+    d1 = _make_bundle(root, sid="AAA")
+    d2 = _make_bundle(root, sid="BBB")
+    latest = find_latest_bundle(root)
+    assert latest in (d1, d2)  # both sealed ~now; must return a real bundle
+    assert (latest / "manifest.json").is_file()
+
+
+def test_render_html_contains_results(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from exodia.core.evidence import render_html
+
+    d = _make_bundle(tmp_path / "evidence")
+    html = render_html(d)
+    assert "<!doctype html>" in html
+    assert "demo.check" in html
+    assert "demo.block" in html
+    assert "PASS" in html and "FAIL" in html
+    assert "tenant-copy" in html
+
+
+def test_render_html_escapes_markup(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from exodia.core.evidence import EvidenceBundle, render_html
+    from exodia.core.result import Result
+
+    root = tmp_path / "evidence"
+    bundle = EvidenceBundle("tenant-copy", None, root=root).open()
+    bundle.add_results([Result.ok("x.y", "value <script>alert(1)</script>")])
+    bundle.close()
+    html = render_html(bundle.dir)
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html

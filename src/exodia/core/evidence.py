@@ -275,3 +275,116 @@ def verify_bundle(bundle_dir: Path | str) -> list[str]:
             if rel not in recorded:
                 problems.append(f"untracked file (added after sealing?): {rel}")
     return problems
+
+
+def find_latest_bundle(root: Path | str = _DEFAULT_ROOT) -> Path | None:
+    """Return the most recent evidence bundle under ``root``, or None.
+
+    A bundle is any directory that contains a ``manifest.json``. "Most recent"
+    is decided by the manifest's ``sealed`` timestamp, falling back to the
+    directory mtime when the manifest can't be read.
+    """
+    r = Path(root)
+    if not r.is_dir():
+        return None
+    candidates: list[tuple[str, Path]] = []
+    for manifest in r.rglob("manifest.json"):
+        d = manifest.parent
+        try:
+            sealed = json.loads(manifest.read_text()).get("sealed", "")
+        except (OSError, json.JSONDecodeError):
+            sealed = ""
+        key = sealed or datetime.fromtimestamp(d.stat().st_mtime, UTC).isoformat()
+        candidates.append((key, d))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: t[0])
+    return candidates[-1][1]
+
+
+_HTML_STATUS_COLOR = {
+    "pass": "#1a7f37",
+    "warn": "#9a6700",
+    "fail": "#cf222e",
+    "skip": "#57606a",
+    "error": "#a40e26",
+}
+
+
+def render_html(bundle_dir: Path | str) -> str:
+    """Render a sealed bundle as a standalone, shareable HTML document.
+
+    Reads ``manifest.json`` + ``results.json`` (no external assets, inline CSS)
+    so the file can be attached to a handover email or opened offline.
+    """
+    d = Path(bundle_dir)
+    manifest = json.loads((d / "manifest.json").read_text())
+    results_path = d / "results.json"
+    results = json.loads(results_path.read_text()) if results_path.is_file() else []
+
+    def esc(text: object) -> str:
+        s = "" if text is None else str(text)
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    ctx = manifest.get("context", {}) or {}
+    rows = []
+    for r in results:
+        status = str(r.get("status", "")).lower()
+        color = _HTML_STATUS_COLOR.get(status, "#57606a")
+        rows.append(
+            f'<tr><td class="name">{esc(r.get("name"))}</td>'
+            f'<td><span class="badge" style="background:{color}">'
+            f"{esc(status.upper())}</span></td>"
+            f'<td>{esc(r.get("summary"))}</td></tr>'
+        )
+    rows_html = "\n".join(rows) or '<tr><td colspan="3">No results recorded.</td></tr>'
+
+    meta = [
+        ("Methodology", manifest.get("methodology")),
+        ("Operation", manifest.get("operation") or "(pre-checks)"),
+        ("Operator", manifest.get("operator")),
+        ("Hostname", manifest.get("hostname")),
+        ("Started", manifest.get("started")),
+        ("Sealed", manifest.get("sealed")),
+        ("Tool version", manifest.get("tool_version")),
+        ("SID", ctx.get("sid")),
+        ("Copy", f"{ctx.get('source') or '?'} → {ctx.get('target') or '?'}"),
+        ("Ticket", ctx.get("ticket")),
+    ]
+    meta_html = "\n".join(
+        f"<dt>{esc(k)}</dt><dd>{esc(v)}</dd>" for k, v in meta if v not in (None, "")
+    )
+    n_artifacts = len(manifest.get("artifacts", []))
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exodia evidence — {esc(manifest.get("methodology"))}</title>
+<style>
+  body {{ font: 15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; color:#1f2328;
+         max-width: 900px; margin: 2rem auto; padding: 0 1rem; }}
+  h1 {{ font-size: 1.4rem; border-bottom: 2px solid #d0d7de; padding-bottom:.4rem; }}
+  dl {{ display: grid; grid-template-columns: max-content 1fr; gap:.2rem 1rem; }}
+  dt {{ font-weight: 600; color:#57606a; }}
+  table {{ border-collapse: collapse; width: 100%; margin-top: 1rem; }}
+  th,td {{ text-align: left; padding:.5rem .6rem; border-bottom: 1px solid #d0d7de; }}
+  th {{ background:#f6f8fa; }}
+  td.name {{ font-family: ui-monospace,SFMono-Regular,monospace; font-size:.9em; }}
+  .badge {{ color:#fff; padding:.1rem .5rem; border-radius: 2rem; font-size:.8em;
+            font-weight:600; }}
+  footer {{ margin-top: 2rem; color:#57606a; font-size:.85em; }}
+</style></head><body>
+<h1>Migration evidence — {esc(manifest.get("methodology"))}</h1>
+<dl>{meta_html}</dl>
+<table><thead><tr><th>Check / phase</th><th>Status</th><th>Summary</th></tr></thead>
+<tbody>
+{rows_html}
+</tbody></table>
+<footer>Tamper-evident bundle · {esc(n_artifacts)} artifact(s) hashed (SHA-256) ·
+schema {esc(manifest.get("schema", "exodia.evidence/v1"))}</footer>
+</body></html>
+"""
