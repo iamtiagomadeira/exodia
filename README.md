@@ -55,9 +55,11 @@ Exit codes are automation-friendly: `0` = nothing blocking, `1` = a blocking fai
 
 ## Status
 
-Alpha. Core is stable; methodology modules (backup/restore for HANA & ASE, and
-Java (AS Java) system copy) are under active development. See the Linear project for the
-roadmap.
+Alpha. The core execution engine is stable. Methodology modules — backup/restore
+for SAP HANA & SAP ASE, tenant copy, HANA System Replication, and Java (AS Java)
+system copy — are under active development. See the
+[Supported scenarios](#supported-scenarios-target) table below for what's covered
+and what's planned.
 
 ## Supported scenarios (target)
 
@@ -71,3 +73,13 @@ roadmap.
 ## License
 
 MIT © Tiago Madeira
+
+## Star History
+
+<a href="https://www.star-history.com/#iamtiagomadeira/sap-migration-toolkit&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=iamtiagomadeira/sap-migration-toolkit&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=iamtiagomadeira/sap-migration-toolkit&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=iamtiagomadeira/sap-migration-toolkit&type=Date" />
+ </picture>
+</a>
