@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from . import __version__
 from .core import report
-from .core.context import Context
+from .core.context import ConfigError, Context
 from .core.evidence import (
     EvidenceBundle,
     find_latest_bundle,
@@ -96,30 +99,43 @@ def _build_context(
     config: str | None,
 ) -> Context:
     if config:
-        ctx = Context.from_file(config)
+        try:
+            ctx = Context.from_file(config)
+        except ConfigError as exc:
+            console.print(f"[red]config error:[/] {exc}")
+            raise typer.Exit(2) from exc
         # CLI flags override file values when provided.
+        overrides: dict[str, Any] = {"dry_run": dry_run, "assume_yes": yes}
         if host:
-            ctx.host = host
+            overrides["host"] = host
         if user:
-            ctx.user = user
+            overrides["user"] = user
         if db_type:
-            ctx.db_type = db_type
+            overrides["db_type"] = db_type
         if source:
-            ctx.source = source
+            overrides["source"] = source
         if target:
-            ctx.target = target
-        ctx.dry_run = dry_run
-        ctx.assume_yes = yes
-        return ctx
-    return Context(
-        host=host,
-        user=user,
-        db_type=db_type,
-        source=source,
-        target=target,
-        dry_run=dry_run,
-        assume_yes=yes,
-    )
+            overrides["target"] = target
+        try:
+            return ctx.model_copy(update=overrides)
+        except ValidationError as exc:
+            console.print(f"[red]invalid option:[/] {exc.errors()[0]['msg']}")
+            raise typer.Exit(2) from exc
+    try:
+        return Context.model_validate(
+            {
+                "host": host,
+                "user": user,
+                "db_type": db_type,
+                "source": source,
+                "target": target,
+                "dry_run": dry_run,
+                "assume_yes": yes,
+            }
+        )
+    except ValidationError as exc:
+        console.print(f"[red]invalid option:[/] {exc.errors()[0]['msg']}")
+        raise typer.Exit(2) from exc
 
 
 @app.command("run")

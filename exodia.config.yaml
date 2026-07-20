@@ -1,0 +1,52 @@
+# Exodia — example configuration file
+#
+# Pass with:  exodia <command> --config exodia.config.yaml
+#
+# Every key below maps to a validated field. Unknown keys are REJECTED (so a
+# typo fails loudly instead of being silently ignored), and values are checked
+# against their allowed set. All keys are optional — set only what you need.
+
+# --- Target selection -------------------------------------------------------
+# Omit `host` to run locally. When set, `user` is required.
+# host: sapprd01.example.com
+# user: prdadm
+# port: 22
+# key_filename: ~/.ssh/id_ed25519
+# known_hosts: ~/.ssh/known_hosts
+
+# --- SAP / database parameters ---------------------------------------------
+# db_type: one of hana | ase | oracle | db2 | maxdb | sybase
+# db_type: hana
+
+# sid: SAP System ID — exactly 3 alphanumeric chars, not starting with a digit.
+# sid: PRD
+
+# source / target: free-form system or host identifiers for the copy.
+# source: PRD@sapprd01
+# target: QAS@sapqas01
+
+# system_type: SAP stack — one of abap | java | dual | pipo | solman
+# system_type: abap
+
+# --- Behaviour flags --------------------------------------------------------
+# dry_run defaults to true: NOTHING executes unless you explicitly set false.
+dry_run: true
+
+# assume_yes: skip confirmation prompts. Leave false for interactive safety.
+# assume_yes: false
+
+# skip_checks: check names to skip entirely.
+# skip_checks:
+#   - core.free-space
+
+# --- Escape hatch -----------------------------------------------------------
+# params: free-form key/value overrides consumed by individual checks/actions.
+# params:
+#   export_dir: /usr/sap/trans/export
+#   min_free_gb: 200
+
+# pre_hooks / post_hooks: shell commands run before / after the operation.
+# pre_hooks:
+#   - "echo starting"
+# post_hooks:
+#   - "echo done"
