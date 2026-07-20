@@ -1,0 +1,74 @@
+site_name: SAP Migration Toolkit
+site_description: >-
+  Stateless executor for SAP migration operations — checks & actions for
+  HANA/ASE backup-restore, tenant copy, HSR, and Java AS system copy.
+site_url: https://iamtiagomadeira.github.io/sap-migration-toolkit/
+repo_url: https://github.com/iamtiagomadeira/sap-migration-toolkit
+repo_name: iamtiagomadeira/sap-migration-toolkit
+edit_uri: edit/main/docs/
+copyright: MIT License
+
+# The README/CONTRIBUTING files are shared with GitHub and use GitHub-relative
+# links (CONTRIBUTING.md, LICENSE, ...). The rewrite_links hook fixes them in
+# the rendered HTML; tell MkDocs' validator not to fail strict builds on them.
+validation:
+  links:
+    unrecognized_links: ignore
+    not_found: ignore
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Authoring a module: authoring-a-module.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+  - Security: security.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: [.]
+      check_paths: true
+
+plugins:
+  - search
+
+hooks:
+  - mkdocs_hooks/rewrite_links.py

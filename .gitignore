@@ -52,3 +52,4 @@ secrets.yml
 *.swp
 .idea/
 .vscode/
+site/
