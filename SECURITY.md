@@ -19,13 +19,9 @@ branch yet.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report privately via one of:
-
-- GitHub **Security Advisories**: open a draft advisory at
-  <https://github.com/iamtiagomadeira/sap-migration-toolkit/security/advisories/new>
-  (preferred — keeps the report private and coordinated).
-- Email the maintainer: **tiago.filipe.madeira@gmail.com** with subject
-  `EXODIA SECURITY`.
+Please report privately via GitHub **Security Advisories**: open a draft advisory at
+<https://github.com/iamtiagomadeira/sap-migration-toolkit/security/advisories/new>
+(keeps the report private and coordinated).
 
 Please include: affected version/commit, a description of the issue, reproduction
 steps or a PoC, and the impact you foresee. We aim to acknowledge within

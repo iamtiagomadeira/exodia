@@ -9,7 +9,7 @@ description = "Stateless executor for SAP migration operations — checks & acti
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Tiago Madeira", email = "tiago.filipe.madeira@gmail.com" }]
+authors = [{ name = "Tiago Madeira" }]
 keywords = ["sap", "hana", "migration", "basis", "automation", "swpm", "cli"]
 classifiers = [
   "Development Status :: 3 - Alpha",
