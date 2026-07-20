@@ -13,6 +13,7 @@ source's server certificate in its trust store. These checks are read-only.
 from __future__ import annotations
 
 from exodia.core import Check, Context, Result
+from exodia.core.params import ParamSpec
 
 from . import _common as c
 
@@ -63,6 +64,9 @@ class SourceReplicationStatusCheck(Check):
     description = "Source tenant HSR status is understood before copying."
     blocking = False
 
+    def parameters(self) -> list[ParamSpec]:
+        return [c.SOURCE_USERSTORE_KEY]
+
     def run(self, ctx: Context) -> Result:
         stmt = (
             "SELECT REPLICATION_STATUS FROM M_SERVICE_REPLICATION "
@@ -100,6 +104,9 @@ class TargetLicenseCheck(Check):
     name = "tenant-copy.hana.target-license"
     description = "Target HANA license is valid (permits another tenant)."
     blocking = False
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.TARGET_USERSTORE_KEY]
 
     def run(self, ctx: Context) -> Result:
         stmt = "SELECT PRODUCT_LIMIT, VALID FROM M_LICENSE"

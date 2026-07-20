@@ -13,9 +13,11 @@ from .core.logging import configure
 from .core.menu import (
     Operation,
     build_context,
+    checks_in,
     collect_params,
     discover_operations,
     methodologies,
+    params_for_checks,
     spec_for,
 )
 from .core.registry import registry
@@ -218,12 +220,33 @@ def menu() -> None:
 
     # Step 2: operation within the methodology (checks first — they're safe)
     group_ops = [o for o in ops if o.methodology == methodology]
-    op_labels = [
+    group_checks = checks_in(ops, methodology)
+    run_all_label = (
+        f"✅ Run ALL {len(group_checks)} pre-checks in this methodology"
+    )
+    op_labels = [run_all_label] + [
         f"{'🔍' if o.kind == 'check' else '⚙️ '} {o.name}  —  {o.description}"
         for o in group_ops
     ]
-    o_idx = prompter.choose(f"[{labels[g_idx]}] Select an operation", op_labels)
-    op: Operation = group_ops[o_idx]
+    sel = prompter.choose(f"[{labels[g_idx]}] Select an operation", op_labels)
+
+    # "Run all pre-checks" is offered as index 0 when the methodology has checks.
+    if sel == 0 and group_checks:
+        specs = params_for_checks(group_checks, registry)
+        console.print(
+            f"\n[bold]Configure:[/] all {len(group_checks)} pre-checks "
+            f"for {methodology} (answer the combined fields once)"
+        )
+        fields, params = collect_params(specs, prompter)
+        ctx = build_context(fields, params, execute=False, assume_yes=False)
+        check_objs = [
+            cc() for c in group_checks if (cc := registry.get_check(c.name)) is not None
+        ]
+        results = run_checks(check_objs, ctx)
+        report.render_table(results, f"Pre-checks: {methodology}", console)
+        raise typer.Exit(report.exit_code(results))
+
+    op: Operation = group_ops[sel - 1]
 
     # Step 3: collect declared parameters
     specs = spec_for(op, registry)

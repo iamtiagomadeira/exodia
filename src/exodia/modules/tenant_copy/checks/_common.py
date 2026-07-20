@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from exodia.core.params import ParamKind, ParamSpec
+
 if TYPE_CHECKING:
     from exodia.core.context import Context
     from exodia.core.shell import CommandResult, Runner, SSHRunner
@@ -155,3 +157,62 @@ def avail_gb(runner_result: CommandResult) -> float | None:
         return float(lines[-1].rstrip("G"))
     except ValueError:
         return None
+
+
+# --------------------------------------------------------------------------- #
+# Parameter specs — declared by checks so the interactive menu can prompt for
+# exactly the cross-host inputs a tenant copy needs. Grouped so each check
+# advertises only the subset it reads; the "run all pre-checks" flow unions them.
+# --------------------------------------------------------------------------- #
+
+# Tenant identity (used by nearly every check).
+SOURCE_TENANT = ParamSpec(
+    "source", "Source tenant name (customer)", required=True, kind=ParamKind.FIELD,
+    help="The tenant DB to copy FROM, e.g. PRD. Never SYSTEMDB.",
+)
+TARGET_TENANT = ParamSpec(
+    "target", "Target tenant name (new)", required=True, kind=ParamKind.FIELD,
+    help="The new tenant DB to create on the target, e.g. QAS.",
+)
+
+# hdbuserstore keys (password-free connections to each SYSTEMDB).
+SOURCE_USERSTORE_KEY = ParamSpec(
+    "source_userstore_key", "Source SYSTEMDB hdbuserstore key", default="SYSTEMDB",
+    help="hdbsql -U key for the SOURCE (customer) SYSTEMDB.",
+)
+TARGET_USERSTORE_KEY = ParamSpec(
+    "target_userstore_key", "Target SYSTEMDB hdbuserstore key", default="SYSTEMDB",
+    help="hdbsql -U key for the TARGET (HEC) SYSTEMDB.",
+)
+
+# Cross-host connectivity (target must reach the source SYSTEMDB SQL port).
+# NOTE: source_host is read via ctx.get("source_host") — it is a free-form param,
+# NOT a first-class Context field (that's ctx.host, the machine we run ON).
+SOURCE_HOST = ParamSpec(
+    "source_host", "Source SYSTEMDB host",
+    help="Customer HANA host the target connects to for the copy.",
+)
+SOURCE_INSTANCE = ParamSpec(
+    "source_instance", "Source instance number", default="00",
+    help="Two digits; the source SQL port 3<nn>13 is derived from it.",
+)
+
+# Capacity sizing inputs (optional — checks fall back to safe defaults).
+SOURCE_TENANT_GB = ParamSpec(
+    "source_tenant_gb", "Source tenant size (GB)",
+    help="Approx size of the source tenant; used to size target free space.",
+)
+TARGET_DATA_PATH = ParamSpec(
+    "target_data_path", "Target data volume path", default="/hana/data",
+)
+TARGET_LOG_PATH = ParamSpec(
+    "target_log_path", "Target log volume path", default="/hana/log",
+)
+
+#: Common set shared by most checks (identity + both userstore keys).
+COMMON_SPECS: list[ParamSpec] = [
+    SOURCE_TENANT,
+    TARGET_TENANT,
+    SOURCE_USERSTORE_KEY,
+    TARGET_USERSTORE_KEY,
+]

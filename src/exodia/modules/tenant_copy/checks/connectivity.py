@@ -12,6 +12,7 @@ port. All checks are read-only.
 from __future__ import annotations
 
 from exodia.core import Check, Context, Result
+from exodia.core.params import ParamSpec
 
 from . import _common as c
 
@@ -52,6 +53,9 @@ class SourceUserstoreKeyCheck(_UserstoreKeyCheck):
     description = "Source SYSTEMDB hdbuserstore key present and usable."
     side = c.SOURCE
 
+    def parameters(self) -> list[ParamSpec]:
+        return [c.SOURCE_USERSTORE_KEY]
+
 
 class TargetUserstoreKeyCheck(_UserstoreKeyCheck):
     """The target SYSTEMDB connect key must exist."""
@@ -59,6 +63,9 @@ class TargetUserstoreKeyCheck(_UserstoreKeyCheck):
     name = "tenant-copy.hana.target-userstore-key"
     description = "Target SYSTEMDB hdbuserstore key present and usable."
     side = c.TARGET
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.TARGET_USERSTORE_KEY]
 
 
 class CrossHostReachabilityCheck(Check):
@@ -72,6 +79,9 @@ class CrossHostReachabilityCheck(Check):
     name = "tenant-copy.hana.cross-host-reachability"
     description = "Target can reach the source SYSTEMDB SQL port."
     blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.SOURCE_HOST, c.SOURCE_INSTANCE]
 
     def run(self, ctx: Context) -> Result:
         source_host = ctx.get("source_host")

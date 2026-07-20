@@ -150,3 +150,24 @@ def spec_for(op: Operation, registry: Registry) -> list[ParamSpec]:
     if cls is None:
         return []
     return list(cls().parameters())
+
+
+def checks_in(ops: list[Operation], methodology: str) -> list[Operation]:
+    """All check operations belonging to a methodology, in menu order."""
+    return [o for o in ops if o.methodology == methodology and o.kind == "check"]
+
+
+def params_for_checks(
+    check_ops: list[Operation], registry: Registry
+) -> list[ParamSpec]:
+    """Union of the parameters declared by several checks (deduped by key).
+
+    Powers the "run all pre-checks" flow: the operator answers the combined
+    field set once, and every check in the methodology receives the same
+    Context. Checks that declare no parameters contribute nothing.
+    """
+    merged: list[ParamSpec] = []
+    for op in check_ops:
+        merged.extend(spec_for(op, registry))
+    return dedupe(merged)
+

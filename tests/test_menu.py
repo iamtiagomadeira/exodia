@@ -10,9 +10,11 @@ from __future__ import annotations
 from exodia.core.context import Context
 from exodia.core.menu import (
     build_context,
+    checks_in,
     collect_params,
     discover_operations,
     methodologies,
+    params_for_checks,
     spec_for,
 )
 from exodia.core.params import ParamKind, ParamSpec
@@ -165,3 +167,30 @@ def test_spec_for_undeclared_check_is_empty_but_safe() -> None:
     for o in ops:
         if o.kind == "check":
             assert isinstance(spec_for(o, registry), list)
+
+
+# --------------------------------------------------------------------------- #
+# Run-all-pre-checks flow
+# --------------------------------------------------------------------------- #
+
+
+def test_checks_in_returns_only_checks_of_methodology() -> None:
+    ops = discover_operations(registry)
+    tc = checks_in(ops, "tenant-copy")
+    assert len(tc) >= 1
+    assert all(o.kind == "check" and o.methodology == "tenant-copy" for o in tc)
+    # actions must be excluded
+    assert all("copy-tenant" not in o.name for o in tc)
+
+
+def test_params_for_checks_unions_and_dedupes() -> None:
+    ops = discover_operations(registry)
+    tc_checks = checks_in(ops, "tenant-copy")
+    specs = params_for_checks(tc_checks, registry)
+    keys = [s.key for s in specs]
+    # deduped: no key appears twice even though many checks share host/user
+    assert len(keys) == len(set(keys))
+
+
+def test_params_for_checks_empty_when_no_checks() -> None:
+    assert params_for_checks([], registry) == []

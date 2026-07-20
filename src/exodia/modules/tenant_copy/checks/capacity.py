@@ -11,6 +11,7 @@ the operator sizes it before executing.
 from __future__ import annotations
 
 from exodia.core import Check, Context, Result
+from exodia.core.params import ParamSpec
 
 from . import _common as c
 
@@ -21,6 +22,9 @@ class TargetDataSpaceCheck(Check):
     name = "tenant-copy.hana.target-data-space"
     description = "Target data free space >= source tenant size + headroom."
     blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.TARGET_DATA_PATH, c.SOURCE_TENANT_GB]
 
     def run(self, ctx: Context) -> Result:
         path = ctx.get("target_data_path", "/hana/data")
@@ -61,6 +65,9 @@ class TargetLogSpaceCheck(Check):
     name = "tenant-copy.hana.target-log-space"
     description = "Target log/trace volume free space >= threshold."
     blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.TARGET_LOG_PATH]
 
     def run(self, ctx: Context) -> Result:
         path = ctx.get("target_log_path", "/hana/log")

@@ -10,6 +10,7 @@ All read-only. Source is the customer environment; target is the SAP HEC system.
 from __future__ import annotations
 
 from exodia.core import Check, Context, Result
+from exodia.core.params import ParamSpec
 
 from . import _common as c
 
@@ -20,6 +21,9 @@ class SourceTenantOnlineCheck(Check):
     name = "tenant-copy.hana.source-tenant-online"
     description = "Source tenant exists and is ONLINE (M_DATABASES)."
     blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.SOURCE_TENANT, c.SOURCE_USERSTORE_KEY]
 
     def run(self, ctx: Context) -> Result:
         tenant = c.source_tenant(ctx)
@@ -68,6 +72,9 @@ class TargetTenantAbsentCheck(Check):
     description = "Target tenant does not already exist on the target SYSTEMDB."
     blocking = True
 
+    def parameters(self) -> list[ParamSpec]:
+        return [c.TARGET_TENANT, c.TARGET_USERSTORE_KEY]
+
     def run(self, ctx: Context) -> Result:
         tenant = c.target_tenant(ctx)
         if not c.is_valid_tenant(tenant):
@@ -112,6 +119,9 @@ class VersionMatchCheck(Check):
     name = "tenant-copy.hana.version-match"
     description = "Target HANA revision >= source revision."
     blocking = True
+
+    def parameters(self) -> list[ParamSpec]:
+        return [c.SOURCE_USERSTORE_KEY, c.TARGET_USERSTORE_KEY]
 
     def _version(self, ctx: Context, side: str) -> tuple[int, ...] | None:
         explicit = ctx.get(c.side_key(side, "version"))
