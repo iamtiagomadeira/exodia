@@ -26,6 +26,20 @@ exodia doctor          # sanity check
    ```
 5. Open a pull request against `main` with a clear description of the what and why.
 
+### Pre-commit hooks (recommended)
+
+Install the hooks once and they run automatically on every commit, mirroring the
+CI gates (ruff, ruff-format, mypy) so issues are caught before they reach a PR:
+
+```bash
+pip install pre-commit      # included in the [dev] extra
+pre-commit install          # wire the git hook
+pre-commit run --all-files  # optional: run against the whole tree now
+```
+
+CI also enforces a **test-coverage floor of 75%** (`--cov-fail-under=75`); keep new
+code covered so the build stays green.
+
 ## Commit style
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):

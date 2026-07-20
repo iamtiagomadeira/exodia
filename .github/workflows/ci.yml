@@ -27,7 +27,7 @@ jobs:
       - name: Mypy
         run: mypy src/exodia
       - name: Pytest
-        run: pytest --cov=src/exodia --cov-report=term-missing
+        run: pytest --cov=src/exodia --cov-report=term-missing --cov-fail-under=75
 
   security:
     runs-on: ubuntu-latest
