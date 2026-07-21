@@ -144,6 +144,7 @@ def verdict_line(results: list[Result], *, no_emoji: bool = False) -> str:
     ]
     counts_line = "  ·  ".join(parts)
     blocking = c[Status.FAIL] + c[Status.ERROR]
+    graded = c[Status.PASS] + c[Status.WARN] + blocking
     if blocking:
         marker = "[FAIL]" if no_emoji else "⛔"
         verdict = (
@@ -155,6 +156,15 @@ def verdict_line(results: list[Result], *, no_emoji: bool = False) -> str:
         verdict = (
             f"[bold yellow]{marker} Ready with caveats — review the warnings, "
             "then you may proceed.[/]"
+        )
+    elif graded == 0:
+        # Nothing was actually evaluated (everything skipped): must NOT read as
+        # a green go. A skip-only run is inconclusive, not "all passed".
+        marker = "[----]" if no_emoji else "⏭️ "
+        verdict = (
+            f"[bold]{marker} Inconclusive — no checks ran "
+            f"({c[Status.SKIP]} skipped). Provide connection params / config "
+            "and re-run before relying on this verdict.[/]"
         )
     else:
         marker = "[PASS]" if no_emoji else "✅"

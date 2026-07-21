@@ -62,6 +62,19 @@ def test_verdict_line_empty() -> None:
     assert "No checks ran" in report.verdict_line([])
 
 
+def test_verdict_line_skip_only_is_inconclusive() -> None:
+    """A run where every check skipped must NOT read as a green go."""
+    line = report.verdict_line([Result.skip("a", "no params"), Result.skip("b", "no params")])
+    assert "Inconclusive" in line
+    assert "Ready to proceed" not in line
+
+
+def test_verdict_line_skip_only_no_emoji() -> None:
+    line = report.verdict_line([Result.skip("a", "no params")], no_emoji=True)
+    assert "Inconclusive" in line
+    assert "⏭️" not in line
+
+
 # -- TIA-76: --no-emoji collapses glyphs to ASCII tags ------------------------ #
 def test_no_emoji_table_uses_ascii() -> None:
     out = _capture([Result.ok("a", "ok"), Result.fail("b", "no")], no_emoji=True)
