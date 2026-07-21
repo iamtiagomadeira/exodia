@@ -102,6 +102,9 @@ def test_all_abap_readiness_checks_discovered() -> None:
         "abap.readiness.rfc-destinations",
         "abap.readiness.transport-requests",
         "abap.readiness.lock-entries",
+        "abap.readiness.active-users",
+        "abap.readiness.spool-requests",
+        "abap.readiness.short-dumps",
     }
     assert expected <= set(checks)
 
@@ -435,3 +438,154 @@ def test_readiness_results_are_timed() -> None:
     assert r.started_at is not None
     assert r.ended_at is not None
     assert r.duration_seconds is not None and r.duration_seconds >= 0.0
+
+
+# --------------------------------------------------------------------------- #
+# active-users (SM04 / TH_USER_LIST)
+# --------------------------------------------------------------------------- #
+
+
+def test_active_users_only_technical_pass() -> None:
+    resp = {"USRLIST": [{"BNAME": "DDIC"}, {"BNAME": "TMSADM"}]}
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: resp)
+    r = _run_check("abap.readiness.active-users", ctx)
+    assert r.status is Status.PASS
+    assert r.data["unexpected"] == []
+
+
+def test_active_users_interactive_fails() -> None:
+    resp = {"USRLIST": [{"BNAME": "DDIC"}, {"BNAME": "JSMITH"}, {"BNAME": "JSMITH"}]}
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: resp)
+    r = _run_check("abap.readiness.active-users", ctx)
+    assert r.status is Status.FAIL
+    assert r.data["unexpected"] == ["JSMITH"]
+
+
+def test_active_users_allowlist_extension() -> None:
+    resp = {"USRLIST": [{"BNAME": "BATCHUSR"}]}
+    ctx = FakeContext(params={**_SRC, "allowed_users": "batchusr"}).bind(lambda fm, kw: resp)
+    r = _run_check("abap.readiness.active-users", ctx)
+    assert r.status is Status.PASS
+
+
+def test_active_users_is_blocking() -> None:
+    cls = registry.get_check("abap.readiness.active-users")
+    assert cls is not None and cls.blocking is True
+
+
+# --------------------------------------------------------------------------- #
+# spool-requests (SP01 / TSP01)
+# --------------------------------------------------------------------------- #
+
+
+def test_spool_all_completed_pass() -> None:
+    rows = _read_table_rows([{"RQIDENT": "1", "RQFINAL": "Y"}, {"RQIDENT": "2", "RQFINAL": "Y"}])
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: rows)
+    r = _run_check("abap.readiness.spool-requests", ctx)
+    assert r.status is Status.PASS
+    assert r.data["unfinished"] == 0
+
+
+def test_spool_backlog_warns() -> None:
+    rows = _read_table_rows([{"RQIDENT": "1", "RQFINAL": "Y"}, {"RQIDENT": "2", "RQFINAL": ""}])
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: rows)
+    r = _run_check("abap.readiness.spool-requests", ctx)
+    assert r.status is Status.WARN
+    assert r.data["unfinished"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# short-dumps (ST22 / SNAP)
+# --------------------------------------------------------------------------- #
+
+
+def test_short_dumps_none_pass() -> None:
+    ctx = FakeContext(params={**_SRC, "dumps_since": "20260101"}).bind(
+        lambda fm, kw: _read_table_rows([])
+    )
+    r = _run_check("abap.readiness.short-dumps", ctx)
+    assert r.status is Status.PASS
+    assert r.data["dump_count"] == 0
+
+
+def test_short_dumps_present_warns() -> None:
+    rows = _read_table_rows(
+        [
+            {"DATUM": "20260721", "UNAME": "JSMITH", "AHOST": "src"},
+            {"DATUM": "20260721", "UNAME": "JSMITH", "AHOST": "src"},
+            {"DATUM": "20260721", "UNAME": "BATCH", "AHOST": "src"},
+        ]
+    )
+    ctx = FakeContext(params={**_SRC, "dumps_since": "20260101"}).bind(lambda fm, kw: rows)
+    r = _run_check("abap.readiness.short-dumps", ctx)
+    assert r.status is Status.WARN
+    assert r.data["dump_count"] == 3
+    assert r.data["by_user"]["JSMITH"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# Runbook — abap.cutover-readiness (aggregate verdict)
+# --------------------------------------------------------------------------- #
+
+
+def test_cutover_runbook_discovered() -> None:
+    rb_cls = registry.get_runbook("abap.cutover-readiness")
+    assert rb_cls is not None
+    # every step must resolve to a registered check
+    for step in rb_cls.steps:
+        assert registry.get_check(step) is not None, f"unresolved step {step}"
+
+
+def test_cutover_runbook_verdict_skip_without_params() -> None:
+    from exodia.core.runner import run_runbook
+
+    rb = registry.get_runbook("abap.cutover-readiness")()
+    ctx = FakeContext(params={}).bind(lambda fm, kw: {})
+    results = run_runbook(rb, ctx)
+    verdict = results[-1]
+    assert verdict.name.endswith(".verdict")
+    assert verdict.status is Status.SKIP
+
+
+def test_runbook_aggregate_worst_status_wins() -> None:
+    from exodia.core.runbook import Runbook
+
+    pass_r = Result.ok("a", "ok")
+    warn_r = Result.warn("b", "meh")
+    fail_r = Result.fail("c", "bad")
+    assert Runbook.aggregate([pass_r, warn_r]) is Status.WARN
+    assert Runbook.aggregate([pass_r, warn_r, fail_r]) is Status.FAIL
+    assert Runbook.aggregate([pass_r, pass_r]) is Status.PASS
+    assert Runbook.aggregate([Result.skip("s", "skip")]) is Status.SKIP
+
+
+def test_runbook_verdict_tally_counts() -> None:
+    from exodia.core.runbook import Runbook
+
+    results = [Result.ok("a", ""), Result.warn("b", ""), Result.fail("c", "")]
+    v = Runbook.verdict_result("demo", results)
+    assert v.status is Status.FAIL
+    assert v.data["tally"] == {"pass": 1, "warn": 1, "fail": 1}
+    assert v.data["blocking"] == ["c"]
+
+
+def test_runbook_stop_on_blocking_halts_early() -> None:
+    """A stop_on_blocking runbook stops at the first blocking step."""
+    from exodia.core.runbook import Runbook
+    from exodia.core.runner import run_runbook
+
+    class _StopRunbook(Runbook):
+        name = "test.stop-early"
+        description = "test"
+        stop_on_blocking = True
+        # lock-entries is blocking and will FAIL with locks held; a step after
+        # it must therefore not run.
+        steps = ["abap.readiness.lock-entries", "abap.readiness.system-info"]
+
+    resp = {"ENQ": [{"GUNAME": "U1"}], "SUBRC": 0}
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: resp)
+    results = run_runbook(_StopRunbook(), ctx)
+    step_names = [r.name for r in results]
+    assert "abap.readiness.lock-entries" in step_names
+    assert "abap.readiness.system-info" not in step_names
+    assert results[-1].status is Status.FAIL

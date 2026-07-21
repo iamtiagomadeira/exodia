@@ -39,7 +39,7 @@ from .core.menu import (
 )
 from .core.monitor import get_monitor
 from .core.registry import registry
-from .core.runner import run_action, run_checks
+from .core.runner import run_action, run_checks, run_runbook
 
 app = typer.Typer(
     name="exodia",
@@ -208,14 +208,81 @@ def run_op(
     raise typer.Exit(report.exit_code(results))
 
 
+@app.command("runbooks")
+def list_runbooks() -> None:
+    """List all discovered runbooks (ordered check sweeps with an aggregate verdict)."""
+    runbooks = registry.runbooks()
+    rt = Table(title="Runbooks (read-only sweeps)", expand=True)
+    rt.add_column("Name", style="green")
+    rt.add_column("Steps")
+    rt.add_column("Description")
+    for name, rb_cls in sorted(runbooks.items()):
+        rt.add_row(name, str(len(rb_cls.steps)), rb_cls.description)
+    console.print(rt)
+    if not runbooks:
+        console.print("[yellow]No runbooks discovered yet.[/]")
+
+
+@app.command("runbook")
+def run_runbook_op(
+    name: str = typer.Argument(..., help="Runbook name, e.g. 'abap.cutover-readiness'."),
+    host: str | None = typer.Option(None, "--host", help="Remote host (omit for local)."),
+    user: str | None = typer.Option(None, "--user", help="SSH user for remote host."),
+    db_type: str | None = typer.Option(None, "--db-type", help="hana | ase | ..."),
+    source: str | None = typer.Option(None, "--source"),
+    target: str | None = typer.Option(None, "--target"),
+    yes: bool = typer.Option(False, "--yes", help="Assume yes (unattended)."),
+    config: str | None = typer.Option(
+        None, "--config", help="YAML config with saved connection params."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+    no_emoji: bool = typer.Option(
+        False,
+        "--no-emoji",
+        help="Use ASCII status tags instead of emoji (CI / non-UTF-8 terminals).",
+    ),
+) -> None:
+    """Run a runbook: an ordered, read-only sweep with one aggregate verdict.
+
+    A runbook re-reads the live system on every run (no cached state), streams
+    each step into a sealed evidence bundle, and finishes with a readiness
+    verdict. Safe to re-run as often as you like — it always reflects the
+    current state of the system.
+    """
+    rb_cls = registry.get_runbook(name)
+    if rb_cls is None:
+        console.print(f"[red]Unknown runbook:[/] {name}. Try `exodia runbooks`.")
+        raise typer.Exit(2)
+
+    # Runbooks are read-only, so a runbook run is never a state-changing action;
+    # dry_run is irrelevant here and left at its default.
+    ctx = _build_context(host, user, db_type, source, target, dry_run=True, yes=yes, config=config)
+    runbook = rb_cls()
+
+    bundle = EvidenceBundle(name, ctx, operation="runbook").open()
+    results = run_runbook(runbook, ctx, evidence=bundle)
+    bundle.close(results)
+
+    title = f"Runbook: {name}"
+    if as_json:
+        console.print_json(report.render_json(results))
+    else:
+        report.render_table(results, title, console, no_emoji=no_emoji)
+        console.print(f"[dim]📁 evidence: {bundle.dir}[/]")
+
+    raise typer.Exit(report.exit_code(results))
+
+
 @app.command("doctor")
 def doctor() -> None:
     """Self-check: verify Exodia's own setup and discovery."""
     checks = registry.checks()
     actions = registry.actions()
+    runbooks = registry.runbooks()
     console.print(f"[green]exodia {__version__}[/]")
     console.print(f"  discovered checks : {len(checks)}")
     console.print(f"  discovered actions: {len(actions)}")
+    console.print(f"  discovered runbooks: {len(runbooks)}")
     from .core.knowledge import _load_kb
 
     console.print(f"  KB error entries  : {len(_load_kb())}")

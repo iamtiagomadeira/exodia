@@ -15,7 +15,7 @@ from .base import Action, Check
 from .logging import get_logger
 
 if TYPE_CHECKING:
-    pass
+    from .runbook import Runbook
 
 log = get_logger()
 
@@ -26,13 +26,19 @@ class Registry:
     def __init__(self) -> None:
         self._checks: dict[str, type[Check]] = {}
         self._actions: dict[str, type[Action]] = {}
+        self._runbooks: dict[str, type[Runbook]] = {}
         self._discovered = False
 
     def discover(self) -> None:
         if self._discovered:
             return
+        # Imported lazily to avoid a circular import: runbook.py imports the
+        # registry singleton at module load, so the registry must not import
+        # Runbook at its own module top.
         import exodia.core.checks as core_checks_pkg
         import exodia.modules as modules_pkg
+
+        from .runbook import Runbook
 
         packages = [
             (modules_pkg.__path__, "exodia.modules."),
@@ -53,6 +59,10 @@ class Registry:
             name = getattr(cls, "name", "")
             if name:
                 self._actions[name] = cls
+        for cls in _all_subclasses(Runbook):
+            name = getattr(cls, "name", "")
+            if name:
+                self._runbooks[name] = cls
         self._discovered = True
 
     def checks(self) -> dict[str, type[Check]]:
@@ -63,6 +73,10 @@ class Registry:
         self.discover()
         return dict(self._actions)
 
+    def runbooks(self) -> dict[str, type[Runbook]]:
+        self.discover()
+        return dict(self._runbooks)
+
     def get_check(self, name: str) -> type[Check] | None:
         self.discover()
         return self._checks.get(name)
@@ -70,6 +84,10 @@ class Registry:
     def get_action(self, name: str) -> type[Action] | None:
         self.discover()
         return self._actions.get(name)
+
+    def get_runbook(self, name: str) -> type[Runbook] | None:
+        self.discover()
+        return self._runbooks.get(name)
 
 
 def _all_subclasses(cls: type) -> set[type]:
