@@ -190,11 +190,15 @@ def run_op(
                 prechecks.append(pc_cls())
         title = f"Action: {name}" + (" (dry-run)" if ctx.dry_run else "")
         if monitor and not as_json:
-            # Live dashboard: stream each phase result into the monitor as it lands.
+            # Live dashboard: attach the monitor to the action so execute()
+            # streams phase/log/progress in real time (not just at the end),
+            # then land each phase Result in the table as it completes.
             mon = get_monitor(title, enabled=True, no_emoji=no_emoji)
             with mon:
                 mon.phase("pre-checks")
+                action.set_monitor(mon)
                 results = run_action(action, prechecks, ctx)
+                action.set_monitor(None)
                 for r in results:
                     mon.result(r)
                 mon.phase("done")
@@ -754,7 +758,21 @@ def menu() -> None:
         prechecks = [
             pc() for c in action.requires_checks if (pc := registry.get_check(c)) is not None
         ]
-        results = run_action(action, prechecks, ctx, evidence=bundle)
+        # When actually executing (not dry-run), show the live dashboard —
+        # progress bar, native log tail and per-phase results — so a long
+        # replica/copy isn't a frozen screen. Dry-run stays a simple table.
+        if execute:
+            mon = get_monitor(f"Action: {op.name}", enabled=True)
+            with mon:
+                mon.phase("pre-checks")
+                action.set_monitor(mon)
+                results = run_action(action, prechecks, ctx, evidence=bundle)
+                action.set_monitor(None)
+                for r in results:
+                    mon.result(r)
+                mon.phase("done")
+        else:
+            results = run_action(action, prechecks, ctx, evidence=bundle)
         title = f"Action: {op.name}" + (" (dry-run)" if ctx.dry_run else "")
 
     bundle.close(results)

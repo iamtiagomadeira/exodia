@@ -458,3 +458,99 @@ def test_full_run_action_prechecks_abort_before_execute() -> None:
     results = run_action(action, prechecks, ctx)
     assert results[-1].status is Status.SKIP
     assert "pre-checks" in results[-1].summary.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Live monitor streaming during the replica (progress bar + log)
+# --------------------------------------------------------------------------- #
+
+
+class CaptureMonitor:
+    """Records everything an action streams, so we can assert on the live UX."""
+
+    def __init__(self) -> None:
+        self.phases: list[tuple[str, str]] = []
+        self.logs: list[str] = []
+        self.progresses: list[float | None] = []
+
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+    def phase(self, name: str, detail: str = "") -> None:
+        self.phases.append((name, detail))
+
+    def progress(self, percent: float | None, detail: str = "") -> None:
+        self.progresses.append(percent)
+
+    def log_line(self, line: str) -> None:
+        self.logs.append(line)
+
+    def result(self, result: object) -> None: ...
+    def handoff(self, message: str, url: str | None = None) -> None: ...
+    def __enter__(self) -> CaptureMonitor:
+        return self
+
+    def __exit__(self, *exc: object) -> None: ...
+
+
+def test_execute_streams_phases_and_progress_to_monitor() -> None:
+    # runner returns ACTIVE replication so the sync poll finishes on the first
+    # iteration (no long sleeps in the test).
+    runner = FakeRunner(exit_code=0, stdout='"ACTIVE","1000","1000"')
+    ctx = _ctx(
+        runner,
+        source="PRD",
+        target="QAS",
+        dry_run=False,
+        assume_yes=True,
+        params={
+            "source_host": "customer-hana",
+            "source_instance": "30",
+            "target_userstore_key": "TGT",
+            "sync_poll_max": "1",
+            "sync_poll_interval": "0",
+        },
+    )
+    action = TenantCopyAction()
+    mon = CaptureMonitor()
+    action.set_monitor(mon)
+    r = action.execute(ctx)
+    assert r.status is Status.PASS
+    # each of the 2 replication commands streamed a "step i/n" phase
+    step_phases = [p for p in mon.phases if p[0].startswith("step ")]
+    assert len(step_phases) == 2
+    assert "step 1/2" in step_phases[0][0]
+    # progress reached 100% for the command sequence
+    assert 100.0 in [p for p in mon.progresses if p is not None]
+    # the planned CREATE DATABASE command was logged
+    assert any("REPLICA OF" in line.upper() or "hdbsql" in line for line in mon.logs)
+
+
+def test_execute_without_monitor_is_silent_noop() -> None:
+    """No monitor attached => execute still works (emit helpers are no-ops)."""
+    runner = FakeRunner(exit_code=0, stdout="")
+    ctx = _ctx(
+        runner,
+        source="PRD",
+        target="QAS",
+        dry_run=False,
+        assume_yes=True,
+        params={"source_host": "h", "source_instance": "30", "target_userstore_key": "TGT"},
+    )
+    r = TenantCopyAction().execute(ctx)
+    assert r.status is Status.PASS
+
+
+def test_parse_replication_progress() -> None:
+    from exodia.modules.system_copy.tenant_copy.actions.copy_tenant import (
+        _parse_replication_progress,
+    )
+
+    # two services, half shipped
+    out = '"INITIALIZING","500","1000"\n"INITIALIZING","500","1000"'
+    statuses, pct = _parse_replication_progress(out)
+    assert statuses == ["INITIALIZING"]
+    assert pct == 50.0
+    # active + no sizes => indeterminate
+    statuses2, pct2 = _parse_replication_progress('"ACTIVE","0","0"')
+    assert statuses2 == ["ACTIVE"]
+    assert pct2 is None

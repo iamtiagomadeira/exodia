@@ -184,10 +184,18 @@ class TenantCopyAction(Action):
         runner = ctx.runner()
         timeout = int(ctx.get("copy_timeout", 7200))
         ran: list[str] = []
-        for pc in plan.commands:
+        n = len(plan.commands)
+        for i, pc in enumerate(plan.commands, start=1):
+            # Stream each command to the live dashboard as its own phase.
+            self._emit_phase(f"step {i}/{n}", pc.display)
+            self._emit_log(f"$ {' '.join(pc.argv[:3])} … {pc.display}")
+            self._emit_progress(None, "running…")
             cr = runner.run(pc.argv, timeout=timeout)
             ran.append(pc.display)
+            if cr.stdout:
+                self._emit_log(cr.stdout)
             if not cr.ok:
+                self._emit_log(cr.stderr or cr.stdout)
                 return Result.fail(
                     phase,
                     f"tenant copy step failed: {pc.display} (exit {cr.exit_code}) — "
@@ -201,6 +209,12 @@ class TenantCopyAction(Action):
                     },
                     sap_note="2456657" if plan.method == "replication" else "1642148",
                 )
+            self._emit_progress(100.0 * i / n, f"{i}/{n} commands done")
+            # After starting replication, poll the sync progress so the operator
+            # sees a live percentage instead of a frozen screen during the (long)
+            # initial data shipping.
+            if plan.method == "replication" and "REPLICA OF" in pc.display.upper():
+                self._poll_replication_sync(ctx, plan.target_tenant)
         return Result.ok(
             phase,
             f"tenant copy commands completed for {plan.target_tenant} "
@@ -211,6 +225,47 @@ class TenantCopyAction(Action):
                 "completed_steps": ran,
             },
         )
+
+    def _poll_replication_sync(self, ctx: Context, target_tenant: str) -> None:
+        """Poll HANA system replication until INITIALIZED/ACTIVE, streaming %.
+
+        Reads M_SERVICE_REPLICATION on the target SYSTEMDB and reports the
+        shipped/replicated fraction to the monitor so the operator sees a live
+        progress bar during the long initial data shipping. Bounded by
+        ``sync_poll_max`` iterations × ``sync_poll_interval`` seconds; if the
+        monitor is absent (no live UI) this is a no-op and returns immediately.
+        """
+        if self._monitor is None:
+            return  # nothing to stream to — skip the polling entirely
+        import time
+
+        key = self._target_key(ctx)
+        interval = float(ctx.get("sync_poll_interval", 10))
+        max_iters = int(ctx.get("sync_poll_max", 360))  # default ~1h at 10s
+        sql = (
+            "SELECT REPLICATION_STATUS, "
+            "COALESCE(SHIPPED_DELTA_REPLICA_SIZE,0), "
+            "COALESCE(FULL_REPLICA_SIZE,0) "
+            "FROM M_SERVICE_REPLICATION"
+        )
+        self._emit_phase("replication sync", f"{target_tenant} shipping data…")
+        for _ in range(max_iters):
+            cr = ctx.runner().run(
+                ["hdbsql", "-U", key, "-x", "-a", "-j", sql],
+                timeout=int(ctx.get("verify_timeout", 120)),
+            )
+            if not cr.ok:
+                self._emit_log(f"(sync poll skipped: {cr.stderr or 'no data'})")
+                return
+            statuses, pct = _parse_replication_progress(cr.stdout)
+            if pct is not None:
+                self._emit_progress(pct, f"replication {', '.join(statuses) or 'syncing'}")
+            self._emit_log(f"replication status: {', '.join(statuses) or 'unknown'} ({pct or 0:.0f}%)")
+            # ACTIVE == fully caught up; INITIALIZED/UNKNOWN keep polling.
+            if statuses and all(s in ("ACTIVE",) for s in statuses):
+                self._emit_progress(100.0, "replication ACTIVE")
+                return
+            time.sleep(interval)
 
     def verify(self, ctx: Context) -> Result:
         phase = f"{self.name}.verify"
@@ -354,3 +409,36 @@ class TenantCopyAction(Action):
             f"manually: DROP DATABASE {tgt} (see SAP Note 2101244), then retry",
             sap_note="2101244",
         )
+
+
+def _parse_replication_progress(stdout: str) -> tuple[list[str], float | None]:
+    """Parse M_SERVICE_REPLICATION rows into (statuses, shipped-percent).
+
+    Each row is (REPLICATION_STATUS, shipped_size, full_size). Returns the set
+    of distinct statuses and the aggregate shipped/full percentage (None when
+    the sizes are unavailable so the bar stays indeterminate).
+    """
+    rows = c.parse_hdbsql_rows(stdout)
+    statuses: list[str] = []
+    shipped_total = 0.0
+    full_total = 0.0
+    for row in rows:
+        if row and row[0]:
+            statuses.append(row[0].upper())
+        if len(row) >= 3:
+            try:
+                shipped_total += float(row[1])
+                full_total += float(row[2])
+            except (ValueError, TypeError):
+                pass
+    pct: float | None = None
+    if full_total > 0:
+        pct = max(0.0, min(100.0, 100.0 * shipped_total / full_total))
+    # De-duplicate statuses preserving order.
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for s in statuses:
+        if s not in seen:
+            seen.add(s)
+            uniq.append(s)
+    return uniq, pct

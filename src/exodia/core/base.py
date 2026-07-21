@@ -11,12 +11,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from .context import Context
 from .knowledge import enrich
 from .logging import get_logger
 from .params import ParamSpec
 from .result import Phase, Result
+
+if TYPE_CHECKING:
+    from .monitor import Monitor
 
 log = get_logger()
 
@@ -126,6 +130,31 @@ class Action(ABC):
             f"{self.name}.rollback",
             "no automatic rollback — see runbook / SAP Note for manual steps",
         )
+
+    # -- live monitor (optional) ------------------------------------------- #
+    #: a live Monitor for long-running actions; None = no live UI (default).
+    _monitor: Monitor | None = None
+
+    def set_monitor(self, monitor: Monitor | None) -> None:
+        """Attach a live monitor so execute() can stream phase/log/progress.
+
+        Optional: when unset, the ``_emit_*`` helpers are silent no-ops, so an
+        action's execute() can call them unconditionally without caring whether
+        a dashboard is attached (CLI --monitor) or not (plain run, tests).
+        """
+        self._monitor = monitor
+
+    def _emit_phase(self, name: str, detail: str = "") -> None:
+        if self._monitor is not None:
+            self._monitor.phase(name, detail)
+
+    def _emit_log(self, line: str) -> None:
+        if self._monitor is not None:
+            self._monitor.log_line(line)
+
+    def _emit_progress(self, percent: float | None, detail: str = "") -> None:
+        if self._monitor is not None:
+            self._monitor.progress(percent, detail)
 
     def run_guarded(self, ctx: Context) -> list[Result]:
         """The full safe-execution flow. Returns one Result per phase."""
