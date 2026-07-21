@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ramp-down actions (SAP MIG).** Guarded state-changing steps to quiesce the
+  source before takeover: `abap.rampdown.suspend-jobs` (BTCTRNS1 — suspend the
+  background scheduler), `abap.rampdown.adapt-operation-modes` (SM63),
+  `abap.rampdown.stop-app-servers` (stop ALL application servers via sapcontrol),
+  and `abap.rampdown.inform-customer` (manual attestation). Two new safety
+  primitives on the Action base support them:
+  - **customer-confirmation gate** (`requires_customer_confirmation`): stopping
+    the customer's application servers will not run until the customer has
+    explicitly signed off (`customer_confirmed=true`) — on top of the usual
+    execute gate. Without it the step SKIPs and sapcontrol is never invoked.
+  - **manual attestation** (`manual` + `attested`): the "inform customer that
+    ramp-down is complete" step performs no system action; the admin emails the
+    customer and records that they did it, so the cutover evidence stays complete.
 - **SAP MIG ABAP readiness — Phase 2 (Tier A).** Expanded the read-only ABAP
   check set, all tagged with cutover phase + human-readable title + facts:
   new checks — `source-profiles` / `target-profiles` (capture DEFAULT.PFL +

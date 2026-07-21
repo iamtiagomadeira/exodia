@@ -86,6 +86,16 @@ class Action(ABC):
     phase: Phase = Phase.UNCLASSIFIED
     #: explicit, action-oriented report title; falls back to the dotted name.
     title: str = ""
+    #: when True, execute() is gated behind an EXPLICIT customer confirmation
+    #: (param ``customer_confirmed`` truthy) on top of the normal --yes gate.
+    #: Used for irreversible customer-impacting steps like stopping the source
+    #: application servers, which SAP must not do until the customer signs off.
+    requires_customer_confirmation: bool = False
+    #: when True this is a MANUAL attestation step — Exodia performs no system
+    #: action; the operator does something off-system (e.g. emails the customer)
+    #: and records that they did it (param ``attested`` truthy). Captured as
+    #: evidence so the cutover record is complete.
+    manual: bool = False
 
     @abstractmethod
     def dry_run(self, ctx: Context) -> Result:
@@ -136,6 +146,23 @@ class Action(ABC):
             )
             return phase_results
 
+        # Phase 3b: customer-confirmation gate. Irreversible customer-impacting
+        # steps (e.g. stopping the source application servers) must not run until
+        # the customer has explicitly signed off — set the ``customer_confirmed``
+        # param truthy. Without it we stop here with a clear SKIP.
+        if self.requires_customer_confirmation and not _truthy(ctx.get("customer_confirmed")):
+            phase_results.append(
+                self._tag(
+                    Result.skip(
+                        f"{self.name}.execute",
+                        "awaiting CUSTOMER confirmation — this step impacts the "
+                        "customer system and must not run until the customer has "
+                        "signed off (set customer_confirmed=true once they have)",
+                    )
+                )
+            )
+            return phase_results
+
         # Phase 4: execute.
         ex = self._tag(self._safe(self.execute, ctx, f"{self.name}.execute"))
         phase_results.append(ex)
@@ -164,3 +191,15 @@ class Action(ABC):
             log.exception("%s raised", name)
             result = Result.error(name, f"unexpected error: {exc}")
         return result.stamp_timing(started, datetime.now(UTC))
+
+
+def _truthy(value: object) -> bool:
+    """Interpret a config/param value as a boolean confirmation flag.
+
+    Accepts real booleans and the usual string spellings (true/yes/y/1/on) so a
+    YAML ``customer_confirmed: true`` and a CLI ``--param customer_confirmed=yes``
+    both work.
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("true", "yes", "y", "1", "on")
