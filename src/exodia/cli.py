@@ -702,6 +702,43 @@ def _offer_manual_names(fields: dict, params: dict, prompter: object) -> None:
         fields["target"] = tgt.strip()
 
 
+def _enrich_key_specs(specs: list, fields: dict, params: dict) -> list:
+    """Turn hdbuserstore-key params into dropdowns of the keys found on the host.
+
+    Any spec whose key ends in ``userstore_key`` / ``tenant_key`` gets its
+    ``choices`` populated by running ``hdbuserstore LIST`` through a Context
+    built from what's been answered so far (honours host/user for SSH). If no
+    keys are discovered (no hdbuserstore, remote unreachable), the spec is left
+    as a free-text prompt — so nothing breaks, it just falls back gracefully.
+    """
+    from dataclasses import replace as _replace
+
+    from .core.menu import build_context
+    from .modules.system_copy.tenant_copy.hdbkeys import discover_hdb_keys
+
+    if not any(s.key.endswith(("userstore_key", "tenant_key")) for s in specs):
+        return specs
+    try:
+        ctx = build_context(fields, params, execute=False, assume_yes=False)
+        keys = discover_hdb_keys(ctx)
+    except Exception:  # noqa: BLE001 - discovery is best-effort
+        keys = []
+    if not keys:
+        return specs
+    labels = tuple(k.name for k in keys)
+    console.print(
+        f"[dim]Discovered {len(keys)} hdbuserstore key(s) on the host — "
+        "pick from the list.[/]"
+    )
+    out = []
+    for s in specs:
+        if s.key.endswith(("userstore_key", "tenant_key")) and not s.choices:
+            out.append(_replace(s, choices=labels))
+        else:
+            out.append(s)
+    return out
+
+
 @app.command("menu")
 def menu() -> None:
     """Interactive wizard — pick a methodology and operation, no long commands."""
@@ -776,6 +813,7 @@ def menu() -> None:
             f"\n[bold]Configure:[/] all {len(group_checks)} pre-checks "
             f"for {methodology} (answer the combined fields once)"
         )
+        specs = _enrich_key_specs(specs, {}, {})
         fields, params = collect_params(specs, prompter)
         # Thread the chosen stack through so checks/actions can adapt.
         params.setdefault("stack", stack)
@@ -804,6 +842,7 @@ def menu() -> None:
             f"\n[bold]Configure:[/] {rb_name} "
             f"({len(runbook.steps)} checks — answer the combined fields once)"
         )
+        specs = _enrich_key_specs(specs, {}, {})
         fields, params = collect_params(specs, prompter)
         params.setdefault("stack", stack)
         ctx = build_context(fields, params, execute=False, assume_yes=False)
@@ -819,6 +858,7 @@ def menu() -> None:
     # Step 3: collect declared parameters
     specs = spec_for(op, registry)
     console.print(f"\n[bold]Configure:[/] {op.name}")
+    specs = _enrich_key_specs(specs, {}, {})
     fields, params = collect_params(specs, prompter)
 
     # Step 3b: for a HANA tenant copy, discover the tenants that ACTUALLY exist
