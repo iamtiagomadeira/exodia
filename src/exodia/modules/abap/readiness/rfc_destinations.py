@@ -17,6 +17,7 @@ from collections import Counter
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -37,6 +38,8 @@ class RfcDestinationsCheck(Check):
 
     name = "abap.readiness.rfc-destinations"
     description = "Inventory RFC destinations by type for post-copy repointing (SM59 / RFCDES)."
+    title = "SM59 — RFC Destinations Inventory Check"
+    phase = Phase.PREPARATION
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -69,10 +72,14 @@ class RfcDestinationsCheck(Check):
             "destinations": [r.get("RFCDEST", "") for r in rows],
         }
         if not rows:
-            return Result.warn(self.name, "RFCDES returned no destinations", data=data)
+            return Result.warn(
+                self.name, "RFCDES returned no destinations", data=data,
+                facts={"Total Destinations": "0", "ABAP/External": "0"},
+            )
         return Result.ok(
             self.name,
             f"{len(rows)} RFC destination(s); {needs_review} ABAP/external need "
             f"post-copy review",
             data=data,
+            facts={"Total Destinations": str(len(rows)), "ABAP/External": str(needs_review)},
         )

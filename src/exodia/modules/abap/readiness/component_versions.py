@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -24,6 +25,8 @@ class ComponentVersionsCheck(Check):
 
     name = "abap.readiness.component-versions"
     description = "Compare software component versions (CVERS) between source and target."
+    title = "CVERS — Software Component Versions Check (Source vs Target)"
+    phase = Phase.PREPARATION
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.COMPARE_CONN_SPECS
@@ -61,6 +64,7 @@ class ComponentVersionsCheck(Check):
                 self.name,
                 f"source has {len(source)} software components (no target to compare)",
                 data={"source_components": source},
+                facts={"Source Components": str(len(source)), "Target Components": "n/a"},
             )
 
         only_source = sorted(set(source) - set(target))
@@ -84,9 +88,21 @@ class ComponentVersionsCheck(Check):
                 f"component mismatch: {len(differing)} differ, "
                 f"{len(only_source)} only on source, {len(only_target)} only on target",
                 data=data,
+                facts={
+                    "Source Components": str(len(source)),
+                    "Target Components": str(len(target)),
+                    "Differing": ", ".join(differing) or "none",
+                    "Only On Source": str(len(only_source)),
+                    "Only On Target": str(len(only_target)),
+                },
             )
         return Result.ok(
             self.name,
             f"all {len(source)} software components match between source and target",
             data=data,
+            facts={
+                "Source Components": str(len(source)),
+                "Target Components": str(len(target)),
+                "Differing": "none",
+            },
         )

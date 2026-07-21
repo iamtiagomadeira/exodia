@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -24,6 +25,8 @@ class ActiveUsersCheck(Check):
 
     name = "abap.readiness.active-users"
     description = "No interactive users logged on at takeover (SM04 / TH_USER_LIST)."
+    title = "SM04/AL08 — Logged-On Users Check"
+    phase = Phase.RAMP_DOWN
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -65,9 +68,17 @@ class ActiveUsersCheck(Check):
                 self.name,
                 f"{len(unexpected)} unexpected user(s) still logged on: {', '.join(unexpected)}",
                 data=data,
+                facts={
+                    "Logged-On Users": ", ".join(users) or "none",
+                    "Unexpected Users": ", ".join(unexpected),
+                },
             )
         return Result.ok(
             self.name,
             f"no unexpected users logged on ({len(users)} technical session(s))",
             data=data,
+            facts={
+                "Logged-On Users": ", ".join(users) or "none",
+                "Unexpected Users": "none",
+            },
         )

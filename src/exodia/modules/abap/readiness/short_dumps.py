@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -25,6 +26,8 @@ class ShortDumpsCheck(Check):
 
     name = "abap.readiness.short-dumps"
     description = "Recent ABAP short dumps at takeover (ST22 / SNAP)."
+    title = "ST22 — ABAP Short Dumps Check"
+    phase = Phase.POST
 
     def parameters(self) -> list[ParamSpec]:
         return [
@@ -69,5 +72,9 @@ class ShortDumpsCheck(Check):
                 self.name,
                 f"{len(rows)} ABAP short dump(s) since {since}",
                 data=data,
+                facts={"Dumps Since": since, "Dump Count": str(len(rows))},
             )
-        return Result.ok(self.name, f"no ABAP short dumps since {since}", data=data)
+        return Result.ok(
+            self.name, f"no ABAP short dumps since {since}", data=data,
+            facts={"Dumps Since": since, "Dump Count": "0"},
+        )

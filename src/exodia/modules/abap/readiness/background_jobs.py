@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -29,6 +30,8 @@ class BackgroundJobsCheck(Check):
 
     name = "abap.readiness.background-jobs"
     description = "No active background jobs at takeover (SM37 / TBTCO)."
+    title = "SM37 — Active/Scheduled Background Jobs Check"
+    phase = Phase.RAMP_DOWN
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -61,13 +64,16 @@ class BackgroundJobsCheck(Check):
                 f"{len(active)} background job(s) still running: {', '.join(active[:5])}"
                 + (" …" if len(active) > 5 else ""),
                 data=data,
+                facts={"Active Jobs": str(len(active)), "Ready/Released Jobs": str(len(ready))},
             )
         if ready:
             return Result.warn(
                 self.name,
                 f"no running jobs, but {len(ready)} ready/released (suspend via BTCTRNS1)",
                 data=data,
+                facts={"Active Jobs": "0", "Ready/Released Jobs": str(len(ready))},
             )
         return Result.ok(
-            self.name, "no active or ready background jobs", data=data
+            self.name, "no active or ready background jobs", data=data,
+            facts={"Active Jobs": "0", "Ready/Released Jobs": "0"},
         )

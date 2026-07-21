@@ -589,3 +589,114 @@ def test_runbook_stop_on_blocking_halts_early() -> None:
     assert "abap.readiness.lock-entries" in step_names
     assert "abap.readiness.system-info" not in step_names
     assert results[-1].status is Status.FAIL
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 — new Tier A checks
+# --------------------------------------------------------------------------- #
+
+
+def test_profile_parameter_parity_match() -> None:
+    same = _read_table_rows(
+        [
+            {"PARNAME": "login/system_client", "PVALUE": "100"},
+            {"PARNAME": "rdisp/max_wprun_time", "PVALUE": "600"},
+        ]
+    )
+    ctx = FakeContext(params=_SRC_TGT).bind(lambda fm, kw: same)
+    r = _run_check("abap.readiness.profile-parameter-parity", ctx)
+    assert r.status is Status.PASS
+    assert r.phase.value == "preparation"
+
+
+def test_profile_parameter_parity_differ_warns() -> None:
+    src = lambda fm, kw: _read_table_rows(  # noqa: E731
+        [{"PARNAME": "login/system_client", "PVALUE": "100"}]
+    )
+    tgt = lambda fm, kw: _read_table_rows(  # noqa: E731
+        [{"PARNAME": "login/system_client", "PVALUE": "200"}]
+    )
+    ctx = FakeContext(params=_SRC_TGT).bind_sides(src, tgt)
+    r = _run_check("abap.readiness.profile-parameter-parity", ctx)
+    assert r.status is Status.WARN
+    assert "login/system_client" in r.data["differing"]
+
+
+def test_profile_parameter_parity_source_only() -> None:
+    ctx = FakeContext(params=_SRC).bind(
+        lambda fm, kw: _read_table_rows([{"PARNAME": "login/system_client", "PVALUE": "100"}])
+    )
+    r = _run_check("abap.readiness.profile-parameter-parity", ctx)
+    assert r.status is Status.PASS
+    assert "source_params" in r.data
+
+
+def test_system_change_option_reads_flag() -> None:
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: _read_table_rows([{"GLOBAL": "X"}]))
+    r = _run_check("abap.readiness.system-change-option", ctx)
+    assert r.status is Status.PASS
+    assert r.data["modifiable"] is True
+    assert r.facts["System Change Option"] == "Modifiable"
+
+
+def test_system_change_option_not_modifiable() -> None:
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: _read_table_rows([{"GLOBAL": " "}]))
+    r = _run_check("abap.readiness.system-change-option", ctx)
+    assert r.data["modifiable"] is False
+
+
+def test_batch_input_no_open_sessions_pass() -> None:
+    rows = _read_table_rows([{"GROUPID": "G1", "QSTATE": "F"}, {"GROUPID": "G2", "QSTATE": "F"}])
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: rows)
+    r = _run_check("abap.readiness.batch-input-sessions", ctx)
+    assert r.status is Status.PASS
+    assert r.data["open_sessions"] == 0
+
+
+def test_batch_input_open_sessions_warn() -> None:
+    rows = _read_table_rows([{"GROUPID": "G1", "QSTATE": "F"}, {"GROUPID": "G2", "QSTATE": "E"}])
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: rows)
+    r = _run_check("abap.readiness.batch-input-sessions", ctx)
+    assert r.status is Status.WARN
+    assert r.data["open_sessions"] == 1
+
+
+def test_installation_consistency_clean_pass() -> None:
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: {"ET_MESSAGES": []})
+    r = _run_check("abap.readiness.installation-consistency", ctx)
+    assert r.status is Status.PASS
+
+
+def test_installation_consistency_errors_fail() -> None:
+    resp = {"ET_MESSAGES": [{"TYPE": "E", "MESSAGE": "bad"}, {"TYPE": "W", "MESSAGE": "meh"}]}
+    ctx = FakeContext(params=_SRC).bind(lambda fm, kw: resp)
+    r = _run_check("abap.readiness.installation-consistency", ctx)
+    assert r.status is Status.FAIL
+    assert r.data["errors"]
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 — the full pre-migration runbook
+# --------------------------------------------------------------------------- #
+
+
+def test_pre_migration_runbook_discovered_and_resolves() -> None:
+    rb_cls = registry.get_runbook("abap.pre-migration-checks")
+    assert rb_cls is not None
+    for step in rb_cls().steps:
+        assert registry.get_check(step) is not None, f"unresolved step {step}"
+
+
+def test_pre_migration_runbook_covers_all_phases() -> None:
+    from exodia.core.result import Phase
+
+    rb_cls = registry.get_runbook("abap.pre-migration-checks")
+    phases = set()
+    for step in rb_cls().steps:
+        check = registry.get_check(step)
+        assert check is not None
+        phases.add(check.phase)
+    # spans preparation, ramp-down and post-activities
+    assert Phase.PREPARATION in phases
+    assert Phase.RAMP_DOWN in phases
+    assert Phase.POST in phases

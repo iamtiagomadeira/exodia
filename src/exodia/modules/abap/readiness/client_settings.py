@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -28,6 +29,8 @@ class ClientSettingsCheck(Check):
 
     name = "abap.readiness.client-settings"
     description = "Client roles and change options (SCC4 / T000)."
+    title = "SCC4/T000 — Client Settings Check"
+    phase = Phase.PREPARATION
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -67,16 +70,24 @@ class ClientSettingsCheck(Check):
         ]
         data = {"clients": clients, "productive_open_for_changes": [c["client"] for c in open_prod]}
         if not clients:
-            return Result.warn(self.name, "T000 returned no clients — unexpected", data=data)
+            return Result.warn(
+                self.name, "T000 returned no clients — unexpected", data=data,
+                facts={"Clients": "0", "Modifiable Productive Clients": "0"},
+            )
         if open_prod:
             return Result.warn(
                 self.name,
                 f"{len(open_prod)} productive client(s) open for changes: "
                 f"{', '.join(c['client'] for c in open_prod)}",
                 data=data,
+                facts={
+                    "Clients": str(len(clients)),
+                    "Modifiable Productive Clients": ", ".join(c["client"] for c in open_prod),
+                },
             )
         return Result.ok(
             self.name,
             f"{len(clients)} client(s); no productive client open for changes",
             data=data,
+            facts={"Clients": str(len(clients)), "Modifiable Productive Clients": "none"},
         )

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -24,6 +25,8 @@ class SystemInfoCheck(Check):
 
     name = "abap.readiness.system-info"
     description = "Source ABAP system identity: kernel, DB, unicode, release (RFC_SYSTEM_INFO)."
+    title = "System Identity & Kernel Check (RFC_SYSTEM_INFO)"
+    phase = Phase.PREPARATION
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -57,10 +60,23 @@ class SystemInfoCheck(Check):
                 self.name,
                 "RFC_SYSTEM_INFO returned no system id — unexpected response shape",
                 data=identity,
+                facts={
+                    "SID": identity["sid"] or "unknown",
+                    "DB System": identity["db_system"],
+                    "Kernel": identity["kernel_release"],
+                    "Unicode": identity["unicode"],
+                },
             )
         return Result.ok(
             self.name,
             f"{identity['sid']} · kernel {identity['kernel_release']} · "
             f"db {identity['db_system']} · unicode {identity['unicode']}",
             data=identity,
+            facts={
+                "SID": identity["sid"],
+                "DB System": identity["db_system"],
+                "Kernel": identity["kernel_release"],
+                "Unicode": identity["unicode"],
+                "Release": identity["kernel_patch"],
+            },
         )

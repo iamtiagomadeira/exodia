@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -23,6 +24,8 @@ class UpdateQueuesDrainedCheck(Check):
 
     name = "abap.readiness.update-queues-drained"
     description = "Source has no pending updates / tRFC / qRFC entries (ready for takeover)."
+    title = "SM13/SM58/SMQ1/SMQ2 — Update & Queue Drain Check"
+    phase = Phase.RAMP_DOWN
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -63,9 +66,21 @@ class UpdateQueuesDrainedCheck(Check):
                 f"source not drained: {n_updates} updates, {n_trfc} tRFC, "
                 f"{n_out} qRFC-out, {n_in} qRFC-in still pending",
                 data=data,
+                facts={
+                    "Pending Updates": str(n_updates),
+                    "Stuck tRFC": str(n_trfc),
+                    "qRFC Outbound": str(n_out),
+                    "qRFC Inbound": str(n_in),
+                },
             )
         return Result.ok(
             self.name,
             "source drained: no pending updates, tRFC or qRFC entries",
             data=data,
+            facts={
+                "Pending Updates": "0",
+                "Stuck tRFC": "0",
+                "qRFC Outbound": "0",
+                "qRFC Inbound": "0",
+            },
         )

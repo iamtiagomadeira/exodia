@@ -17,6 +17,7 @@ from collections import Counter
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -31,6 +32,8 @@ class TransportRequestsCheck(Check):
 
     name = "abap.readiness.transport-requests"
     description = "Modifiable/unreleased transport requests (STMS / E070)."
+    title = "STMS/SE01 — Pending Transport Requests Check"
+    phase = Phase.RAMP_DOWN
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -62,9 +65,14 @@ class TransportRequestsCheck(Check):
                 self.name,
                 f"{len(modifiable)} modifiable (unreleased) transport request(s) in source",
                 data=data,
+                facts={
+                    "Total Requests": str(len(rows)),
+                    "Modifiable Requests": str(len(modifiable)),
+                },
             )
         return Result.ok(
             self.name,
             f"no modifiable transport requests ({len(rows)} total, all released)",
             data=data,
+            facts={"Total Requests": str(len(rows)), "Modifiable Requests": "0"},
         )

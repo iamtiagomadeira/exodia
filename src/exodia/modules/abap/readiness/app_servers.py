@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -23,6 +24,8 @@ class AppServersCheck(Check):
 
     name = "abap.readiness.app-servers"
     description = "Inventory active app servers (SM51) and logon groups (SMLG)."
+    title = "SM51 — Application Servers Check"
+    phase = Phase.PREPARATION
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -58,17 +61,23 @@ class AppServersCheck(Check):
         }
         if not servers:
             return Result.warn(
-                self.name, "no active application servers returned by TH_SERVER_LIST", data=data
+                self.name, "no active application servers returned by TH_SERVER_LIST", data=data,
+                facts={"App Servers": "0", "Logon Groups": str(len(logon_groups))},
             )
         if not logon_groups:
             return Result.warn(
                 self.name,
                 f"{len(servers)} app server(s) but no logon groups configured (SMLG empty)",
                 data=data,
+                facts={"App Servers": str(len(servers)), "Logon Groups": "0"},
             )
         return Result.ok(
             self.name,
             f"{len(servers)} app server(s), {len(logon_groups)} logon group(s): "
             f"{', '.join(logon_groups)}",
             data=data,
+            facts={
+                "App Servers": str(len(servers)),
+                "Logon Groups": ", ".join(logon_groups) or "none",
+            },
         )

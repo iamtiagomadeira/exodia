@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -22,6 +23,8 @@ class LockEntriesCheck(Check):
 
     name = "abap.readiness.lock-entries"
     description = "No enqueue lock entries held at takeover (SM12 / ENQUEUE_READ)."
+    title = "SM12 — Enqueue Lock Entries Check"
+    phase = Phase.RAMP_DOWN
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -51,5 +54,8 @@ class LockEntriesCheck(Check):
                 self.name,
                 f"{len(entries)} enqueue lock(s) held by: {', '.join(holders) or 'unknown'}",
                 data=data,
+                facts={"Lock Entries": str(len(entries)), "Holders": ", ".join(holders) or "none"},
             )
-        return Result.ok(self.name, "no enqueue lock entries held", data=data)
+        return Result.ok(
+            self.name, "no enqueue lock entries held", data=data, facts={"Lock Entries": "0"}
+        )

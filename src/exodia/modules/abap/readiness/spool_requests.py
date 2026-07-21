@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _rfc
 
@@ -26,6 +27,8 @@ class SpoolRequestsCheck(Check):
 
     name = "abap.readiness.spool-requests"
     description = "Spool request backlog at takeover (SP01 / TSP01)."
+    title = "SP01 — Spool Requests Backlog Check"
+    phase = Phase.RAMP_DOWN
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS
@@ -52,9 +55,11 @@ class SpoolRequestsCheck(Check):
                 self.name,
                 f"{len(unfinished)} unfinished spool request(s) of {total} total",
                 data=data,
+                facts={"Total Spool Requests": str(total), "Unfinished": str(len(unfinished))},
             )
         return Result.ok(
             self.name,
             f"no unfinished spool requests ({total} total, all completed)",
             data=data,
+            facts={"Total Spool Requests": str(total), "Unfinished": "0"},
         )
