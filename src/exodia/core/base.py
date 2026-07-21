@@ -16,7 +16,7 @@ from .context import Context
 from .knowledge import enrich
 from .logging import get_logger
 from .params import ParamSpec
-from .result import Result
+from .result import Phase, Result
 
 log = get_logger()
 
@@ -30,6 +30,11 @@ class Check(ABC):
     description: str = ""
     #: if True, a FAIL aborts the surrounding prepare pipeline immediately
     blocking: bool = False
+    #: which cutover macro-phase this check belongs to (drives report grouping)
+    phase: Phase = Phase.UNCLASSIFIED
+    #: explicit, action-oriented report title, e.g. "SM12 — Lock Entries Check".
+    #: Falls back to the dotted name when empty.
+    title: str = ""
 
     @abstractmethod
     def run(self, ctx: Context) -> Result:
@@ -46,13 +51,22 @@ class Check(ABC):
         return []
 
     def execute(self, ctx: Context) -> Result:
-        """Wrapper: runs the check, catches exceptions, enriches from KB."""
+        """Wrapper: runs the check, catches exceptions, enriches from KB.
+
+        Also stamps the check's declared ``phase`` / ``title`` onto the Result
+        (unless ``run`` already set them), so every check is grouped and labelled
+        for the human report without each ``run`` having to repeat that metadata.
+        """
         started = datetime.now(UTC)
         try:
             result = self.run(ctx)
         except Exception as exc:  # noqa: BLE001 - convert to structured ERROR
             log.exception("check %s raised", self.name)
             result = Result.error(self.name, f"unexpected error: {exc}")
+        if result.phase is Phase.UNCLASSIFIED and self.phase is not Phase.UNCLASSIFIED:
+            result.phase = self.phase
+        if not result.title and self.title:
+            result.title = self.title
         result.stamp_timing(started, datetime.now(UTC))
         if result.status.is_blocking:
             enrich(result, ctx)

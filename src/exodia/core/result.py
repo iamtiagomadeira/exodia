@@ -28,6 +28,49 @@ class Status(str, Enum):
         return self in (Status.FAIL, Status.ERROR)
 
 
+class Phase(str, Enum):
+    """The four macro-phases of a system-copy / migration cutover plan.
+
+    These mirror the official ECS/HEC Cutover Plan structure so a report groups
+    checks the way a migration team actually reasons about the cutover:
+
+    * PREPARATION  — read-only readiness on source & target, no downtime.
+    * RAMP_DOWN    — quiesce the source (drain queues, lock users, stop jobs).
+    * DOWNTIME     — business is down; the copy/replica is created and synced.
+    * POST         — post-activities on the target (verify, reattach, validation).
+
+    ``UNCLASSIFIED`` is the default for operations that predate phase tagging.
+    """
+
+    PREPARATION = "preparation"
+    RAMP_DOWN = "ramp_down"
+    DOWNTIME = "downtime"
+    POST = "post"
+    UNCLASSIFIED = "unclassified"
+
+    @property
+    def label(self) -> str:
+        """Human-readable phase title for reports."""
+        return {
+            Phase.PREPARATION: "Preparation Phase",
+            Phase.RAMP_DOWN: "Ramp-Down Phase (Source)",
+            Phase.DOWNTIME: "Downtime / Execution Phase",
+            Phase.POST: "Post-Activities Phase (Target)",
+            Phase.UNCLASSIFIED: "Other Checks",
+        }[self]
+
+    @property
+    def order(self) -> int:
+        """Cutover ordering used to sort phase groups in a report."""
+        return {
+            Phase.PREPARATION: 0,
+            Phase.RAMP_DOWN: 1,
+            Phase.DOWNTIME: 2,
+            Phase.POST: 3,
+            Phase.UNCLASSIFIED: 9,
+        }[self]
+
+
 class Result(BaseModel):
     """Structured outcome of a single check or action phase."""
 
@@ -41,6 +84,17 @@ class Result(BaseModel):
     sap_note: str | None = None
     # Free-form structured data (e.g. measured free space, versions).
     data: dict = Field(default_factory=dict)
+    # --- report presentation (human-readable grouping) --------------------- #
+    # Which cutover macro-phase this result belongs to (drives report grouping).
+    phase: Phase = Phase.UNCLASSIFIED
+    # Explicit, action-oriented title for a human report, e.g.
+    # "SM12 — Lock Entries Check" or "HANA Revision Compatibility". Falls back
+    # to ``name`` when unset.
+    title: str = ""
+    # Ordered, labelled facts to show as their own columns/rows in a report,
+    # e.g. {"HANA Version": "2.00.067", "Lock Entries": "0"}. This is what makes
+    # a check "explicit" for the customer — the measured value, clearly labelled.
+    facts: dict = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # Exact timing of the underlying work. ``execute`` phases of an action can
     # run for hours (SWPM restore), so an auditor needs the real start, end and
@@ -48,6 +102,11 @@ class Result(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     duration_seconds: float | None = None
+
+    @property
+    def display_title(self) -> str:
+        """The human title if set, else the dotted name."""
+        return self.title or self.name
 
     @classmethod
     def ok(cls, name: str, summary: str = "", **kw: object) -> Result:

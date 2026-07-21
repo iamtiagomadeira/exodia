@@ -3,7 +3,7 @@
 from .base import Action, Check
 from .context import Context
 from .evidence import EvidenceBundle, verify_bundle
-from .result import Result, Status
+from .result import Phase, Result, Status
 from .runbook import Runbook
 
 __all__ = [
@@ -11,6 +11,7 @@ __all__ = [
     "Check",
     "Context",
     "EvidenceBundle",
+    "Phase",
     "Result",
     "Runbook",
     "Status",

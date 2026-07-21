@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase-grouped, human-readable evidence report.** Results now carry a cutover
+  ``phase`` (Preparation / Ramp-Down / Downtime / Post-Activities — mirroring the
+  ECS/HEC Cutover Plan), an explicit action-oriented ``title`` (e.g. "SM12 —
+  Lock Entries Check"), and labelled ``facts`` (e.g. "Source HANA Version:
+  2.00.067"). The HTML report groups checks under phase headings with per-phase
+  status, shows the human title plus the measured findings as chips, and leads
+  with a colour-coded verdict banner. All eleven tenant-copy checks are tagged.
+- **CSV export** (`exodia report --format csv`) — one row per check with Phase,
+  Check, Title, Status, Duration, Summary, Findings and SAP Note columns; opens
+  natively in Excel / Google Sheets, no spreadsheet dependency.
+- **Target tenant discovery + selection.** For a HANA tenant copy the wizard
+  queries the target SYSTEMDB (M_DATABASES) for the tenants that actually exist
+  and: assumes the only one (asking to confirm), or offers a dropdown when there
+  are several (showing SID + status), or notes that a new tenant will be created.
+  The operator confirms the exact database that will receive the source data,
+  and can correct the source/target names if the previewed command is wrong.
 - **Portable snapshots + cross-side compare** (`exodia snapshot` /
   `exodia compare`) for air-gapped migrations. Capture one side (source or
   target) into a signed, tamper-evident JSON file carrying every check's

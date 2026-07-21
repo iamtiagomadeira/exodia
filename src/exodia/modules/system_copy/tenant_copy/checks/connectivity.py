@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _common as c
 
@@ -43,6 +44,7 @@ class _UserstoreKeyCheck(Check):
             self.name,
             f"{self.side} hdbuserstore key '{key}' present",
             data={"side": self.side, "key": key},
+            facts={"Side": self.side.capitalize(), "hdbuserstore Key": str(key), "Status": "Present"},
         )
 
 
@@ -51,6 +53,8 @@ class SourceUserstoreKeyCheck(_UserstoreKeyCheck):
 
     name = "tenant-copy.hana.source-userstore-key"
     description = "Source SYSTEMDB hdbuserstore key present and usable."
+    title = "Source SYSTEMDB — Secure Store Key Check"
+    phase = Phase.PREPARATION
     side = c.SOURCE
 
     def parameters(self) -> list[ParamSpec]:
@@ -62,6 +66,8 @@ class TargetUserstoreKeyCheck(_UserstoreKeyCheck):
 
     name = "tenant-copy.hana.target-userstore-key"
     description = "Target SYSTEMDB hdbuserstore key present and usable."
+    title = "Target SYSTEMDB — Secure Store Key Check"
+    phase = Phase.PREPARATION
     side = c.TARGET
 
     def parameters(self) -> list[ParamSpec]:
@@ -78,6 +84,8 @@ class CrossHostReachabilityCheck(Check):
 
     name = "tenant-copy.hana.cross-host-reachability"
     description = "Target can reach the source SYSTEMDB SQL port."
+    title = "Cross-Host Network Reachability Check (Target → Source SQL Port)"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -105,9 +113,19 @@ class CrossHostReachabilityCheck(Check):
                 f"target cannot reach source SYSTEMDB at {source_host}:{port} — "
                 "check firewall / security groups between HEC and customer network",
                 data={"source_host": source_host, "port": port},
+                facts={
+                    "Source Host": str(source_host),
+                    "SQL Port": str(port),
+                    "Reachable": "No",
+                },
             )
         return Result.ok(
             self.name,
             f"target can reach source SYSTEMDB at {source_host}:{port}",
             data={"source_host": source_host, "port": port},
+            facts={
+                "Source Host": str(source_host),
+                "SQL Port": str(port),
+                "Reachable": "Yes",
+            },
         )

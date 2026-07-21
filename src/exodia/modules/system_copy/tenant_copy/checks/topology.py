@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _common as c
 
@@ -20,6 +21,8 @@ class SourceTenantOnlineCheck(Check):
 
     name = "tenant-copy.hana.source-tenant-online"
     description = "Source tenant exists and is ONLINE (M_DATABASES)."
+    title = "Source Tenant Availability Check (M_DATABASES)"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -62,6 +65,7 @@ class SourceTenantOnlineCheck(Check):
             self.name,
             f"source tenant '{tenant}' is online",
             data={"tenant": tenant, "active_status": status},
+            facts={"Source Tenant": str(tenant), "Active Status": str(status)},
         )
 
 
@@ -70,6 +74,8 @@ class TargetTenantAbsentCheck(Check):
 
     name = "tenant-copy.hana.target-tenant-absent"
     description = "Target tenant does not already exist on the target SYSTEMDB."
+    title = "Target Tenant Name Availability Check (No Overwrite)"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -106,6 +112,7 @@ class TargetTenantAbsentCheck(Check):
             self.name,
             f"target tenant '{tenant}' is absent (safe to create)",
             data={"tenant": tenant},
+            facts={"Target Tenant": str(tenant), "Exists on Target": "No (safe to create)"},
         )
 
 
@@ -118,6 +125,8 @@ class VersionMatchCheck(Check):
 
     name = "tenant-copy.hana.version-match"
     description = "Target HANA revision >= source revision."
+    title = "HANA Revision Compatibility Check (Source vs Target)"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -153,12 +162,22 @@ class VersionMatchCheck(Check):
                 self.name,
                 f"target revision {_fmt(tgt)} >= source {_fmt(src)}",
                 data={"source": _fmt(src), "target": _fmt(tgt)},
+                facts={
+                    "Source HANA Version": _fmt(src),
+                    "Target HANA Version": _fmt(tgt),
+                    "Compatible": "Yes (target ≥ source)",
+                },
             )
         return Result.fail(
             self.name,
             f"target revision {_fmt(tgt)} is older than source {_fmt(src)} — "
             "a tenant copy cannot downgrade the revision",
             data={"source": _fmt(src), "target": _fmt(tgt)},
+            facts={
+                "Source HANA Version": _fmt(src),
+                "Target HANA Version": _fmt(tgt),
+                "Compatible": "No (target < source)",
+            },
         )
 
 

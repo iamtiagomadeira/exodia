@@ -299,3 +299,88 @@ def test_render_html_banner_ignores_verdict_row(tmp_path) -> None:  # type: igno
     html = render_html(bundle.dir)
     # one real blocker, not two (the verdict row is excluded)
     assert "NOT READY — 1 blocking issue(s) must be resolved" in html
+
+
+def test_render_html_groups_by_phase(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Results are grouped under their cutover phase headings."""
+    from exodia.core.evidence import EvidenceBundle, render_html
+    from exodia.core.result import Phase, Result
+
+    root = tmp_path / "evidence"
+    bundle = EvidenceBundle("tenant-copy", None, root=root).open()
+    bundle.add_results(
+        [
+            Result.ok("prep.a", "ok", phase=Phase.PREPARATION, title="Prep Check A"),
+            Result.ok("ramp.b", "ok", phase=Phase.RAMP_DOWN, title="SM12 — Lock Entries Check"),
+            Result.ok("down.c", "ok", phase=Phase.DOWNTIME, title="Create Replica"),
+            Result.ok("post.d", "ok", phase=Phase.POST, title="Data Integrity Verification"),
+        ]
+    )
+    bundle.close()
+    html = render_html(bundle.dir)
+    assert "Preparation Phase" in html
+    assert "Ramp-Down Phase (Source)" in html
+    assert "Downtime / Execution Phase" in html
+    assert "Post-Activities Phase (Target)" in html
+    # human-readable titles present, not just dotted names
+    assert "SM12 — Lock Entries Check" in html
+    # phase order: Preparation must appear before Post-Activities in the HTML
+    assert html.index("Preparation Phase") < html.index("Post-Activities Phase")
+
+
+def test_render_html_shows_facts_as_chips(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Labelled facts render as their own chips so the customer sees the values."""
+    from exodia.core.evidence import EvidenceBundle, render_html
+    from exodia.core.result import Phase, Result
+
+    root = tmp_path / "evidence"
+    bundle = EvidenceBundle("tenant-copy", None, root=root).open()
+    bundle.add_results(
+        [
+            Result.ok(
+                "v",
+                "ok",
+                phase=Phase.PREPARATION,
+                title="HANA Revision Compatibility Check",
+                facts={"Source HANA Version": "2.00.067", "Target HANA Version": "2.00.067"},
+            )
+        ]
+    )
+    bundle.close()
+    html = render_html(bundle.dir)
+    assert "Source HANA Version:" in html
+    assert "2.00.067" in html
+
+
+def test_render_csv_grouped_and_labelled(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """CSV export carries phase, human title, status and flattened findings."""
+    from exodia.core.evidence import EvidenceBundle, render_csv
+    from exodia.core.result import Phase, Result
+
+    root = tmp_path / "evidence"
+    bundle = EvidenceBundle("tenant-copy", None, root=root).open()
+    bundle.add_results(
+        [
+            Result.ok(
+                "abap.readiness.lock-entries",
+                "no locks",
+                phase=Phase.RAMP_DOWN,
+                title="SM12 — Lock Entries Check",
+                facts={"Lock Entries": "0"},
+            ),
+            Result.ok(
+                "v",
+                "ok",
+                phase=Phase.PREPARATION,
+                title="HANA Revision Compatibility Check",
+                facts={"Source HANA Version": "2.00.067"},
+            ),
+        ]
+    )
+    bundle.close()
+    csv_text = render_csv(bundle.dir)
+    assert "Phase,Check,Title,Status,Duration,Summary,Findings,SAP Note" in csv_text
+    assert "SM12 — Lock Entries Check" in csv_text
+    assert "Lock Entries=0" in csv_text
+    # Preparation (order 0) sorts before Ramp-Down (order 1)
+    assert csv_text.index("Preparation Phase") < csv_text.index("Ramp-Down Phase")

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _common as c
 
@@ -28,6 +29,8 @@ class SslCollateralCheck(Check):
 
     name = "tenant-copy.hana.ssl-collateral"
     description = "SSL trust collateral present for encrypted cross-host copy."
+    title = "SSL/TLS Trust Collateral Check (Cross-Host Encryption)"
+    phase = Phase.PREPARATION
     blocking = True
 
     def run(self, ctx: Context) -> Result:
@@ -62,6 +65,8 @@ class SourceReplicationStatusCheck(Check):
 
     name = "tenant-copy.hana.source-replication-status"
     description = "Source tenant HSR status is understood before copying."
+    title = "Source System Replication Status Check (HSR)"
+    phase = Phase.PREPARATION
     blocking = False
 
     def parameters(self) -> list[ParamSpec]:
@@ -103,6 +108,8 @@ class TargetLicenseCheck(Check):
 
     name = "tenant-copy.hana.target-license"
     description = "Target HANA license is valid (permits another tenant)."
+    title = "Target HANA License Validity Check (M_LICENSE)"
+    phase = Phase.PREPARATION
     blocking = False
 
     def parameters(self) -> list[ParamSpec]:
@@ -135,4 +142,5 @@ class TargetLicenseCheck(Check):
             self.name,
             "target HANA license is valid",
             data={"valid": valid},
+            facts={"License Valid": "Yes", "Product Limit": rows[0][0] if rows[0] else "?"},
         )

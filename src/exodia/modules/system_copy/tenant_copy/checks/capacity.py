@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
+from exodia.core.result import Phase
 
 from . import _common as c
 
@@ -21,6 +22,8 @@ class TargetDataSpaceCheck(Check):
 
     name = "tenant-copy.hana.target-data-space"
     description = "Target data free space >= source tenant size + headroom."
+    title = "Target Data Volume Capacity Check"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -50,12 +53,22 @@ class TargetDataSpaceCheck(Check):
                 self.name,
                 f"{avail:.0f}G free at {path} (>= {needed:.0f}G needed)",
                 data={"avail_gb": avail, "needed_gb": needed, "path": path},
+                facts={
+                    "Data Volume Path": str(path),
+                    "Free Space (GB)": f"{avail:.0f}",
+                    "Required (GB)": f"{needed:.0f}",
+                },
             )
         return Result.fail(
             self.name,
             f"insufficient disk space on target: {avail:.0f}G free at {path}, "
             f"need {needed:.0f}G",
             data={"avail_gb": avail, "needed_gb": needed, "path": path},
+            facts={
+                "Data Volume Path": str(path),
+                "Free Space (GB)": f"{avail:.0f}",
+                "Required (GB)": f"{needed:.0f}",
+            },
         )
 
 
@@ -64,6 +77,8 @@ class TargetLogSpaceCheck(Check):
 
     name = "tenant-copy.hana.target-log-space"
     description = "Target log/trace volume free space >= threshold."
+    title = "Target Log Volume Capacity Check"
+    phase = Phase.PREPARATION
     blocking = True
 
     def parameters(self) -> list[ParamSpec]:
@@ -85,10 +100,20 @@ class TargetLogSpaceCheck(Check):
                 self.name,
                 f"{avail:.0f}G free at {path} (>= {min_gb:.0f}G)",
                 data={"avail_gb": avail, "min_gb": min_gb, "path": path},
+                facts={
+                    "Log Volume Path": str(path),
+                    "Free Space (GB)": f"{avail:.0f}",
+                    "Minimum (GB)": f"{min_gb:.0f}",
+                },
             )
         return Result.fail(
             self.name,
             f"insufficient disk space for logs/traces on target: {avail:.0f}G at "
             f"{path}, need {min_gb:.0f}G",
             data={"avail_gb": avail, "min_gb": min_gb, "path": path},
+            facts={
+                "Log Volume Path": str(path),
+                "Free Space (GB)": f"{avail:.0f}",
+                "Minimum (GB)": f"{min_gb:.0f}",
+            },
         )

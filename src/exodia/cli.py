@@ -510,6 +510,93 @@ class _TyperPrompter:
         console.print(f"[dim]{message}[/]")
 
 
+def _discover_and_select_target_tenant(
+    fields: dict, params: dict, prompter: object
+) -> None:
+    """Ask the target SYSTEMDB which tenants exist and confirm/select the target.
+
+    Mutates ``fields``/``params`` in place so the chosen tenant flows into the
+    Context. Mirrors the operator's mental model:
+
+      * one tenant on the target  -> assume it, confirm yes/no;
+      * several tenants           -> pick from a dropdown (SID + status);
+      * none                      -> keep the typed name (a new tenant is created).
+
+    Also offers to correct the source/target names if the operator says the
+    previewed command is wrong. Fails soft: if discovery can't run (no target
+    key, no hdbsql), it silently keeps whatever was typed.
+    """
+    from .core.menu import build_context
+    from .modules.system_copy.tenant_copy.discovery import (
+        list_target_tenants,
+        resolve_target_tenant,
+    )
+
+    assert hasattr(prompter, "choose")  # nosec B101 - Prompter protocol
+    ctx = build_context(fields, params, execute=False, assume_yes=False)
+    try:
+        tenants = list_target_tenants(ctx)
+    except Exception:  # noqa: BLE001 - discovery is best-effort
+        tenants = []
+    mode, candidates = resolve_target_tenant(tenants)
+
+    typed = fields.get("target") or params.get("target")
+    if mode == "none":
+        if typed:
+            console.print(
+                f"[dim]No existing tenant on the target — the copy will create "
+                f"'{typed}' as a new tenant.[/]"
+            )
+        return
+
+    if mode == "single":
+        only = candidates[0]
+        console.print(
+            f"\n[bold]The target SYSTEMDB has one tenant:[/] "
+            f"[cyan]{only.name}[/] (status: {only.active_status or 'unknown'})."
+        )
+        ok = prompter.confirm(  # type: ignore[attr-defined]
+            f"Confirm '{only.name}' is the tenant that will RECEIVE the source data?",
+            default=True,
+        )
+        if ok:
+            fields["target"] = only.name
+        else:
+            _offer_manual_names(fields, params, prompter)
+        return
+
+    # multiple: present a dropdown of SID + status.
+    console.print("\n[bold]Select the target tenant that will receive the source data:[/]")
+    options = [f"{t.name}  (status: {t.active_status or 'unknown'})" for t in candidates]
+    idx = prompter.choose("Target tenant", options)  # type: ignore[attr-defined]
+    chosen = candidates[idx]
+    console.print(
+        f"[green]Selected target tenant:[/] [bold]{chosen.name}[/] — "
+        "the source data will be copied into THIS database."
+    )
+    fields["target"] = chosen.name
+
+
+def _offer_manual_names(fields: dict, params: dict, prompter: object) -> None:
+    """Let the operator correct the source/target names when the plan is wrong.
+
+    The 'the shown command is not correct' escape hatch: re-enter the source SID
+    (the tenant to copy FROM) and the target SID (to copy INTO) so the command is
+    rebuilt with the right names.
+    """
+    console.print("[yellow]Let's set the correct source and target tenant names.[/]")
+    src = prompter.ask(  # type: ignore[attr-defined]
+        "Source tenant name (copy FROM)", default=str(fields.get("source") or ""), secret=False
+    )
+    tgt = prompter.ask(  # type: ignore[attr-defined]
+        "Target tenant name (copy INTO)", default=str(fields.get("target") or ""), secret=False
+    )
+    if src.strip():
+        fields["source"] = src.strip()
+    if tgt.strip():
+        fields["target"] = tgt.strip()
+
+
 @app.command("menu")
 def menu() -> None:
     """Interactive wizard — pick a methodology and operation, no long commands."""
@@ -593,6 +680,12 @@ def menu() -> None:
     specs = spec_for(op, registry)
     console.print(f"\n[bold]Configure:[/] {op.name}")
     fields, params = collect_params(specs, prompter)
+
+    # Step 3b: for a HANA tenant copy, discover the tenants that ACTUALLY exist
+    # on the target SYSTEMDB and let the operator confirm/select the one that
+    # will receive the source data — no reliance on a typed name alone.
+    if op.name == "tenant-copy.hana.copy-tenant":
+        _discover_and_select_target_tenant(fields, params, prompter)
 
     # Step 4: execution mode (actions only; checks are always read-only)
     execute = False
@@ -735,7 +828,7 @@ def report_cmd(
         "", help="Evidence bundle to render. Omit to use the most recent one."
     ),
     fmt: str = typer.Option(
-        "both", "--format", "-f", help="Output format: html, md, or both."
+        "both", "--format", "-f", help="Output format: html, md, csv, or both (html+md)."
     ),
     out: str = typer.Option("", "--out", "-o", help="Output path/prefix (no extension)."),
 ) -> None:
@@ -771,8 +864,14 @@ def report_cmd(
         html_dest = prefix.with_suffix(".html")
         html_dest.write_text(render_html(d), encoding="utf-8")
         written.append(html_dest)
+    if fmt in ("csv", "both"):
+        from .core.evidence import render_csv
+
+        csv_dest = prefix.with_suffix(".csv")
+        csv_dest.write_text(render_csv(d), encoding="utf-8")
+        written.append(csv_dest)
     if not written:
-        console.print(f"[red]unknown format:[/] {fmt} (use html, md, or both)")
+        console.print(f"[red]unknown format:[/] {fmt} (use html, md, csv, or both)")
         raise typer.Exit(1)
     console.print(f"[green]✅ report written[/] from {d}:")
     for p in written:

@@ -498,19 +498,65 @@ def render_html(bundle_dir: Path | str) -> str:
         )
 
     ctx = manifest.get("context", {}) or {}
-    rows = []
-    for r in results:
-        status = str(r.get("status", "")).lower()
-        color = _HTML_STATUS_COLOR.get(status, "#57606a")
-        dur = format_duration(r.get("duration_seconds"))
-        rows.append(
-            f'<tr><td class="name">{esc(r.get("name"))}</td>'
-            f'<td><span class="badge" style="background:{color}">'
-            f"{esc(status.upper())}</span></td>"
-            f'<td class="dur">{esc(dur)}</td>'
-            f'<td>{esc(r.get("summary"))}</td></tr>'
+
+    # Group results by cutover phase so the report reads like a migration plan.
+    # Each result carries an optional "phase", "title" and "facts" payload.
+    from .result import Phase  # local import avoids a cycle at module load
+
+    def _phase_of(r: dict) -> Phase:
+        try:
+            return Phase(str(r.get("phase", "unclassified")))
+        except ValueError:
+            return Phase.UNCLASSIFIED
+
+    def _fmt_facts(facts: dict) -> str:
+        if not facts:
+            return ""
+        chips = "".join(
+            f'<span class="fact"><b>{esc(k)}:</b> {esc(v)}</span>'
+            for k, v in facts.items()
         )
-    rows_html = "\n".join(rows) or '<tr><td colspan="4">No results recorded.</td></tr>'
+        return f'<div class="facts">{chips}</div>'
+
+    # Bucket results into phases, preserving order within each phase.
+    buckets: dict[Phase, list[dict]] = {}
+    for r in results:
+        buckets.setdefault(_phase_of(r), []).append(r)
+
+    phase_sections = []
+    for phase in sorted(buckets, key=lambda p: p.order):
+        section_rows = []
+        for r in buckets[phase]:
+            status = str(r.get("status", "")).lower()
+            color = _HTML_STATUS_COLOR.get(status, "#57606a")
+            dur = format_duration(r.get("duration_seconds"))
+            title = r.get("title") or r.get("name")
+            facts_html = _fmt_facts(r.get("facts") or {})
+            section_rows.append(
+                f'<tr><td class="name"><div class="title">{esc(title)}</div>'
+                f'<div class="cid">{esc(r.get("name"))}</div></td>'
+                f'<td><span class="badge" style="background:{color}">'
+                f"{esc(status.upper())}</span></td>"
+                f'<td class="dur">{esc(dur)}</td>'
+                f'<td>{esc(r.get("summary"))}{facts_html}</td></tr>'
+            )
+        # Per-phase mini-tally.
+        p_statuses = [str(r.get("status", "")).lower() for r in buckets[phase]]
+        p_fail = sum(1 for s in p_statuses if s in ("fail", "error"))
+        p_warn = sum(1 for s in p_statuses if s == "warn")
+        p_badge = "#cf222e" if p_fail else ("#9a6700" if p_warn else "#1a7f37")
+        p_summary = (
+            f"{p_fail} blocking" if p_fail else (f"{p_warn} warning(s)" if p_warn else "all clear")
+        )
+        phase_sections.append(
+            f'<h2 class="phase"><span class="pdot" style="background:{p_badge}"></span>'
+            f"{esc(phase.label)} <span class=\"pcount\">({esc(p_summary)})</span></h2>"
+            '<table><thead><tr><th>Check (action performed)</th><th>Status</th>'
+            "<th>Duration</th><th>Result &amp; findings</th></tr></thead><tbody>"
+            + ("\n".join(section_rows) or '<tr><td colspan="4">No checks.</td></tr>')
+            + "</tbody></table>"
+        )
+    sections_html = "\n".join(phase_sections) or "<p>No results recorded.</p>"
 
     meta = [
         ("Methodology", manifest.get("methodology")),
@@ -559,29 +605,97 @@ def render_html(bundle_dir: Path | str) -> str:
 <title>Exodia evidence — {esc(manifest.get("methodology"))}</title>
 <style>
   body {{ font: 15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; color:#1f2328;
-         max-width: 900px; margin: 2rem auto; padding: 0 1rem; }}
-  h1 {{ font-size: 1.4rem; border-bottom: 2px solid #d0d7de; padding-bottom:.4rem; }}
+         max-width: 960px; margin: 2rem auto; padding: 0 1rem; }}
+  h1 {{ font-size: 1.5rem; border-bottom: 2px solid #d0d7de; padding-bottom:.4rem; }}
+  h2.phase {{ font-size: 1.15rem; margin: 2rem 0 .5rem; display:flex; align-items:center;
+              gap:.5rem; }}
+  .pdot {{ width:.7rem; height:.7rem; border-radius:50%; display:inline-block; }}
+  .pcount {{ font-weight:400; color:#57606a; font-size:.9rem; }}
   .verdict {{ color:#fff; padding:.6rem 1rem; border-radius:.5rem; font-weight:700;
               margin:1rem 0; font-size:1.05rem; }}
   dl {{ display: grid; grid-template-columns: max-content 1fr; gap:.2rem 1rem; }}
   dt {{ font-weight: 600; color:#57606a; }}
-  table {{ border-collapse: collapse; width: 100%; margin-top: 1rem; }}
-  th,td {{ text-align: left; padding:.5rem .6rem; border-bottom: 1px solid #d0d7de; }}
-  th {{ background:#f6f8fa; }}
-  td.name {{ font-family: ui-monospace,SFMono-Regular,monospace; font-size:.9em; }}
+  table {{ border-collapse: collapse; width: 100%; margin-top:.3rem; }}
+  th,td {{ text-align: left; padding:.5rem .6rem; border-bottom: 1px solid #d0d7de;
+           vertical-align: top; }}
+  th {{ background:#f6f8fa; font-size:.85rem; text-transform:uppercase; letter-spacing:.02em; }}
+  td.name .title {{ font-weight:600; }}
+  td.name .cid {{ font-family: ui-monospace,SFMono-Regular,monospace; font-size:.78em;
+                  color:#8c959f; }}
   td.dur {{ font-variant-numeric: tabular-nums; color:#57606a; white-space:nowrap; }}
   .badge {{ color:#fff; padding:.1rem .5rem; border-radius: 2rem; font-size:.8em;
             font-weight:600; }}
+  .facts {{ margin-top:.4rem; display:flex; flex-wrap:wrap; gap:.3rem; }}
+  .fact {{ background:#f0f3f6; border:1px solid #d8dee4; border-radius:.4rem;
+           padding:.05rem .45rem; font-size:.82em; }}
+  .fact b {{ color:#57606a; font-weight:600; }}
   footer {{ margin-top: 2rem; color:#57606a; font-size:.85em; }}
 </style></head><body>
-<h1>Migration evidence — {esc(manifest.get("methodology"))}</h1>
+<h1>SAP Migration Evidence Report — {esc(manifest.get("methodology"))}</h1>
 <div class="verdict" style="background:{banner_bg}">{esc(banner_txt)}</div>
 <dl>{meta_html}</dl>
-<table><thead><tr><th>Check / phase</th><th>Status</th><th>Duration</th><th>Summary</th></tr></thead>
-<tbody>
-{rows_html}
-</tbody></table>
+{sections_html}
 <footer>Tamper-evident bundle · {esc(n_artifacts)} artifact(s) hashed (SHA-256) ·
 schema {esc(manifest.get("schema", "exodia.evidence/v1"))}</footer>
 </body></html>
 """
+
+
+def render_csv(bundle_dir: Path | str) -> str:
+    """Render a sealed bundle as CSV (opens natively in Excel / Google Sheets).
+
+    One row per check, columns: Phase, Check, Title, Status, Duration, Summary,
+    Findings (the labelled facts flattened to ``key=value; ...``), SAP Note.
+    No dependency on any spreadsheet library — CSV is the universal interchange
+    format every tool imports, so the report drops straight into a migration
+    tracker or a customer handover workbook.
+    """
+    import csv
+    import io
+
+    from .result import Phase
+
+    d = Path(bundle_dir)
+    results_path = d / "results.json"
+    results = json.loads(results_path.read_text()) if results_path.is_file() else []
+
+    def phase_label(r: dict) -> str:
+        try:
+            return Phase(str(r.get("phase", "unclassified"))).label
+        except ValueError:
+            return Phase.UNCLASSIFIED.label
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["Phase", "Check", "Title", "Status", "Duration", "Summary", "Findings", "SAP Note"]
+    )
+    ordered = sorted(
+        results,
+        key=lambda r: _phase_order(r),
+    )
+    for r in ordered:
+        facts = r.get("facts") or {}
+        findings = "; ".join(f"{k}={v}" for k, v in facts.items())
+        writer.writerow(
+            [
+                phase_label(r),
+                r.get("name", ""),
+                r.get("title") or r.get("name", ""),
+                str(r.get("status", "")).upper(),
+                format_duration(r.get("duration_seconds")),
+                r.get("summary", ""),
+                findings,
+                r.get("sap_note") or "",
+            ]
+        )
+    return buf.getvalue()
+
+
+def _phase_order(r: dict) -> int:
+    from .result import Phase
+
+    try:
+        return Phase(str(r.get("phase", "unclassified"))).order
+    except ValueError:
+        return Phase.UNCLASSIFIED.order
