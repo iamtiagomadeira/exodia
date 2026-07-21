@@ -1,0 +1,42 @@
+# Exodia — ABAP post-activities configuration template (SAP MIG)
+#
+# Copy, fill in, and re-open the TARGET after the copy is verified. Run each
+# step with:  exodia run <action> --config abap-post-activities.yaml --execute --yes
+#
+# All keys are validated; unknown keys are rejected. Keep passwords out of a
+# shared file (secretless RFC service user / runtime injection).
+
+db_type: hana
+system_type: abap
+sid: QAS                      # the TARGET system SID (HEC)
+
+# --- Where Exodia runs ------------------------------------------------------
+# Set host to reach the target over SSH for the sapcontrol start step.
+# host: saphec01.hec.example.com
+# user: qasadm
+# key_filename: ~/.ssh/id_ed25519
+
+params:
+  # --- RFC connection to the TARGET ABAP system (BTCTRNS2/SU10/SM51) ---------
+  source_ashost: saphec01.hec.example.com   # the TARGET AS host (source_* keys
+  source_sysnr: "00"                        # are the RFC namespace Exodia reads)
+  source_client: "000"
+  rfc_user: EXODIA_MIG
+  # rfc_password: <injected at runtime — do NOT store here>
+
+  # --- abap.post.start-app-servers (sapcontrol StartSystem) -----------------
+  instance_number: "00"
+  start_scope: system          # 'system' = StartSystem ALL | 'instance' = Start this one
+
+  # --- abap.post.resume-jobs (BTCTRNS2) -------------------------------------
+  #   no extra params — uses the RFC connection above
+
+  # --- abap.post.unlock-users (SU10) ----------------------------------------
+  # Typically the same set locked at ramp-down.
+  business_users: "JSMITH,MARY,OPS_BATCH"
+
+  # --- abap.post.validate-online (SM51) -------------------------------------
+  #   no extra params — confirms the app servers are back online
+
+# dry_run defaults to true — pass --execute to actually run each step.
+dry_run: true

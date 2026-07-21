@@ -481,6 +481,106 @@ def doctor() -> None:
     console.print("[green]✅ core healthy[/]")
 
 
+# The cutover playbook: the four phases in order, each a list of steps. A step
+# is (label, command, note) — command is the exact CLI line, note flags gates.
+_CUTOVER_PLAN: list[tuple[str, str, list[tuple[str, str, str]]]] = [
+    (
+        "Preparation Phase",
+        "read-only readiness + profile backup (no downtime)",
+        [
+            ("Readiness sweep (source parity + config)",
+             "exodia runbook abap.pre-migration-checks --config source.yaml", ""),
+            ("Tenant-copy prerequisites",
+             "exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml", ""),
+            ("Back up source profiles",
+             "exodia run abap.profile-backup --config source.yaml --execute --yes", ""),
+            ("Back up target profiles + global dir",
+             "exodia run abap.profile-backup --config target.yaml --execute --yes",
+             "set backup_scope=global on the target"),
+        ],
+    ),
+    (
+        "Ramp-Down Phase (Source)",
+        "quiesce the customer system — downtime begins",
+        [
+            ("Suspend background scheduler (BTCTRNS1)",
+             "exodia run abap.rampdown.suspend-jobs --config abap-ramp-down.yaml --execute --yes", ""),
+            ("Adapt operation modes (SM63)",
+             "exodia run abap.rampdown.adapt-operation-modes --config abap-ramp-down.yaml --execute --yes", ""),
+            ("Lock business users (SU10)",
+             "exodia run abap.rampdown.lock-users --config abap-ramp-down.yaml --execute --yes",
+             "technical users always spared"),
+            ("Stop application servers (sapcontrol)",
+             "exodia run abap.rampdown.stop-app-servers --config abap-ramp-down.yaml --execute --yes",
+             "GATE: needs customer_confirmed=true — customer must sign off first"),
+            ("Inform customer ramp-down is complete",
+             "exodia run abap.rampdown.inform-customer --config abap-ramp-down.yaml --execute --yes",
+             "MANUAL: you email the customer, then set attested=true"),
+        ],
+    ),
+    (
+        "Downtime / Execution Phase",
+        "create and sync the replica — business is down",
+        [
+            ("Re-confirm readiness",
+             "exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml", ""),
+            ("Preview the copy (dry-run shows CREATE DATABASE ... AS REPLICA OF ...)",
+             "exodia run tenant-copy.hana.copy-tenant --config tenant-copy.yaml", ""),
+            ("Execute the copy (live dashboard: progress + log)",
+             "exodia run tenant-copy.hana.copy-tenant --config tenant-copy.yaml --execute --yes --monitor",
+             "GATE: type the target tenant name to confirm"),
+        ],
+    ),
+    (
+        "Post-Activities Phase (Target)",
+        "re-open the target for business — downtime ends",
+        [
+            ("Start application servers (sapcontrol)",
+             "exodia run abap.post.start-app-servers --config abap-post-activities.yaml --execute --yes", ""),
+            ("Resume background scheduler (BTCTRNS2)",
+             "exodia run abap.post.resume-jobs --config abap-post-activities.yaml --execute --yes", ""),
+            ("Unlock business users (SU10)",
+             "exodia run abap.post.unlock-users --config abap-post-activities.yaml --execute --yes", ""),
+            ("Validate the system is online (SM51)",
+             "exodia run abap.post.validate-online --config abap-post-activities.yaml --execute --yes", ""),
+        ],
+    ),
+]
+
+
+@app.command("cutover-plan")
+def cutover_plan() -> None:
+    """Print the SAP MIG cutover playbook: the four phases, in order.
+
+    Your day-of reference card — every operation to run, in sequence, with the
+    exact command and the safety gates flagged. Read-only: prints guidance,
+    runs nothing. Fill in the config templates under examples/ first.
+    """
+    console.print(
+        Panel(
+            "[bold]SAP MIG cutover playbook[/] — run top to bottom.\n"
+            "Fill in the config templates first: [cyan]examples/tenant-copy.yaml[/], "
+            "[cyan]examples/abap-ramp-down.yaml[/], [cyan]examples/abap-post-activities.yaml[/]. "
+            "Dry-run is the default; [bold]--execute --yes[/] runs for real.",
+            title="🗺  Cutover Plan",
+            border_style="cyan",
+        )
+    )
+    for i, (phase, subtitle, steps) in enumerate(_CUTOVER_PLAN, start=1):
+        console.print(f"\n[bold white]{i}. {phase}[/]  [dim]— {subtitle}[/]")
+        for j, (label, cmd, note) in enumerate(steps, start=1):
+            console.print(f"  [bold]{i}.{j}[/] {label}")
+            console.print(f"      [green]{cmd}[/]")
+            if note:
+                marker = "⛔" if note.startswith("GATE") else ("✋" if note.startswith("MANUAL") else "•")
+                console.print(f"      [yellow]{marker} {note}[/]")
+    console.print(
+        "\n[dim]Every run writes a sealed evidence bundle. Produce the phased "
+        "report any time with:[/] [green]exodia report --format html[/] "
+        "[dim](or --format csv for Excel).[/]"
+    )
+
+
 class _TyperPrompter:
     """Real Prompter: numbered menus + prompts via Rich/Typer."""
 

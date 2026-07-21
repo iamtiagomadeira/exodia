@@ -1,0 +1,53 @@
+# Exodia — ABAP ramp-down configuration template (SAP MIG)
+#
+# Copy, fill in, and drive the source ramp-down before takeover. Run each step
+# with:  exodia run <action> --config abap-ramp-down.yaml --execute --yes
+#
+# NO PASSWORDS should live in a shared file — prefer a secretless RFC service
+# user via the SAP secure login, or inject rfc_password at runtime. All keys are
+# validated; unknown keys are rejected.
+
+db_type: hana
+system_type: abap
+sid: PRD                      # the SOURCE system SID (customer)
+
+# --- Where Exodia runs ------------------------------------------------------
+# Leave host unset to run locally; set it to reach the source over SSH
+# (sapcontrol / OS steps). RFC steps use the source_* params below.
+# host: sapprd01.customer.example.com
+# user: prdadm
+# key_filename: ~/.ssh/id_ed25519
+
+params:
+  # --- RFC connection to the SOURCE ABAP system (SM12/SM37/BTCTRNS/SU10) -----
+  source_ashost: sapprd01.customer.example.com
+  source_sysnr: "00"
+  source_client: "000"
+  rfc_user: EXODIA_MIG        # service user with the needed authorisations
+  # rfc_password: <injected at runtime — do NOT store here>
+
+  # --- abap.rampdown.suspend-jobs (BTCTRNS1) --------------------------------
+  #   no extra params — uses the RFC connection above
+
+  # --- abap.rampdown.adapt-operation-modes (SM63) ---------------------------
+  operation_mode: RAMPDOWN    # blank = record intent only, don't switch
+
+  # --- abap.rampdown.lock-users (SU10) --------------------------------------
+  # Explicit business users to lock. Technical users (DDIC, SAP*, TMSADM, ...)
+  # are ALWAYS spared automatically.
+  business_users: "JSMITH,MARY,OPS_BATCH"
+  # keep_unlocked: "OPS_BATCH"   # extra users to never lock, on top of the built-ins
+
+  # --- abap.rampdown.stop-app-servers (sapcontrol) --------------------------
+  instance_number: "00"        # NN for sapcontrol
+  stop_scope: system           # 'system' = StopSystem ALL | 'instance' = Stop this one
+  # customer_confirmed: true    # ← set to true ONLY AFTER the customer signs off.
+  #                                Without it the stop SKIPs and sapcontrol is
+  #                                never invoked.
+
+  # --- abap.rampdown.inform-customer (MANUAL) -------------------------------
+  # attested: true                        # set true once you have emailed the customer
+  # attested_note: "emailed ops@customer 09:00, takeover starting"
+
+# dry_run defaults to true — pass --execute to actually run each step.
+dry_run: true

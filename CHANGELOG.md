@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`exodia cutover-plan` + config templates — the day-of starter kit.** A new
+  read-only command prints the whole SAP MIG cutover playbook (the four phases,
+  in order, with every exact command and the safety gates ⛔/✋ flagged) as a
+  terminal reference card. Ships with fill-in-the-blanks config templates
+  `examples/abap-ramp-down.yaml` and `examples/abap-post-activities.yaml`
+  (alongside the existing `tenant-copy.yaml`), so an admin can go from clone to
+  running the cutover without guessing any parameter.
 - **Full cutover lifecycle — ramp-down + post-activities actions.** Completed the
   four-phase ABAP cutover as guarded actions:
   - Ramp-Down: `suspend-jobs` (BTCTRNS1), `adapt-operation-modes` (SM63),

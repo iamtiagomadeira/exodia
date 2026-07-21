@@ -15,6 +15,13 @@ Every action is **guarded**: dry-run (shows the exact command) → confirm →
 execute → verify → documented rollback. Nothing state-changing runs without an
 explicit opt-in.
 
+> **Day-of reference card:** run `exodia cutover-plan` to print this whole
+> sequence — every command, in order, with the safety gates flagged — straight
+> in the terminal. Fill in the config templates first:
+> [`examples/tenant-copy.yaml`](../examples/tenant-copy.yaml),
+> [`examples/abap-ramp-down.yaml`](../examples/abap-ramp-down.yaml),
+> [`examples/abap-post-activities.yaml`](../examples/abap-post-activities.yaml).
+
 ---
 
 ## Phase 1 — Preparation (read-only + backups)
