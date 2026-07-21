@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OS-level readiness checks (source & target).** Read via the context runner
+  (SSH/local): `source/target-kernel-release` (disp+work -version),
+  `source/target-os-release` (/etc/os-release), `source/target-cpu-info` (lscpu
+  cores + model), and `target-timezone` (timedatectl; target-only, with an
+  optional `expected_timezone` compare). New `abap.target-os-validation` runbook
+  groups the four target OS checks for a one-click sweep on the target host.
+- **Landscape/config readiness checks (SAP MIG task list).** RZ10 gateway ACL
+  paths (reg_info/sec_info/prxy_info/ms_acl_info), SMLT installed languages,
+  SPAM support-package status (GREEN), SECSTORE secure-store, RZ04 operation
+  modes, RZ12 RFC server groups, SM61 job server groups — all read-only via
+  RFC_READ_TABLE, wired into the `abap.pre-migration-checks` runbook.
 - **Tenant copy — COP-derived checks & actions (from the real dry-run runbook).**
   - Checks: `source-ports` / `target-ports` (HANA service ports from
     `M_SERVICES`, incl. the SQL/replication port) and `source-replication-
