@@ -25,6 +25,7 @@ from __future__ import annotations
 from exodia.core import Context, Result
 from exodia.core.base import Action
 from exodia.core.params import DB_TYPE, HOST, USER, ParamSpec
+from exodia.core.result import Phase
 
 from ..checks import _common as c
 from .planner import (
@@ -41,6 +42,8 @@ class TenantCopyAction(Action):
 
     name = "tenant-copy.hana.copy-tenant"
     description = "Copy a HANA tenant across hosts (replication|backup), guarded."
+    title = "Trigger Replica — CREATE DATABASE AS REPLICA OF"
+    phase = Phase.DOWNTIME
     destructive = True
     requires_checks = [
         "tenant-copy.hana.source-tenant-online",
