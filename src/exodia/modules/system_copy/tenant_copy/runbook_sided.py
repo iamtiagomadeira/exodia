@@ -42,6 +42,8 @@ class SourceReadinessRunbook(Runbook):
         "tenant-copy.hana.source-ports",
         "tenant-copy.hana.source-replication-parameters",
         "tenant-copy.hana.source-replication-status",
+        "tenant-copy.hana.source-table-consistency",
+        "tenant-copy.hana.source-catalog-consistency",
     ]
 
 

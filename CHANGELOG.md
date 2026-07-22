@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HANA database consistency checks (SAP Note 1785060 / 1977584).** Read-only
+  technical consistency checks for the copied tenant: `table-consistency`
+  (`CALL CHECK_TABLE_CONSISTENCY('CHECK', NULL, NULL)` — row/column store,
+  indices, dictionary) and `catalog-consistency` (`CALL CHECK_CATALOG(...)` —
+  metadata). Source variants run in Preparation as a baseline; target variants
+  are blocking in Post-Activities. CHECK action only, never REPAIR. New
+  `tenant-copy.hana.post-validation` runbook groups the post-copy validation
+  sweep (secure_communication + data + table + catalog consistency). The
+  persistence layer (`hdbpersdiag`) is documented as a manual offline step, not
+  automated.
 - **OS-level readiness checks (source & target).** Read via the context runner
   (SSH/local): `source/target-kernel-release` (disp+work -version),
   `source/target-os-release` (/etc/os-release), `source/target-cpu-info` (lscpu

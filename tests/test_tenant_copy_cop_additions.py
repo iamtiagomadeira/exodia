@@ -325,3 +325,85 @@ def test_data_consistency_skip_without_keys() -> None:
     ctx = _ctx(ScriptedRunner(stdout=""))
     r = _run_check("tenant-copy.hana.data-consistency", ctx)
     assert r.status is Status.SKIP
+
+
+# --------------------------------------------------------------------------- #
+# HANA consistency checks — CHECK_TABLE_CONSISTENCY / CHECK_CATALOG (1785060)
+# --------------------------------------------------------------------------- #
+
+
+def test_table_consistency_clean_pass() -> None:
+    # empty result set = no inconsistencies
+    ctx = _ctx(ScriptedRunner(stdout=""), target_tenant_key="TGT")
+    r = _run_check("tenant-copy.hana.target-table-consistency", ctx)
+    assert r.status is Status.PASS
+    assert r.facts["Inconsistencies"] == "0"
+    # ran the CHECK action (never REPAIR)
+    assert any("CHECK_TABLE_CONSISTENCY('CHECK'" in c[-1] for c in ctx.runner().calls)
+
+
+def test_table_consistency_inconsistencies_fail() -> None:
+    rows = '"SAPABAP1","MSEG","","0","8003","index inconsistency"'
+    ctx = _ctx(ScriptedRunner(stdout=rows), target_tenant_key="TGT")
+    r = _run_check("tenant-copy.hana.target-table-consistency", ctx)
+    assert r.status is Status.FAIL
+    assert r.data["errors"] >= 1
+    assert r.sap_note == "1785060"
+
+
+def test_table_consistency_is_blocking_on_target() -> None:
+    cls = registry.get_check("tenant-copy.hana.target-table-consistency")
+    assert cls is not None and cls.blocking is True
+
+
+def test_table_consistency_skip_without_key() -> None:
+    ctx = _ctx(ScriptedRunner(stdout=""))
+    r = _run_check("tenant-copy.hana.target-table-consistency", ctx)
+    assert r.status is Status.SKIP
+
+
+def test_catalog_consistency_clean_pass() -> None:
+    ctx = _ctx(ScriptedRunner(stdout=""), target_tenant_key="TGT")
+    r = _run_check("tenant-copy.hana.target-catalog-consistency", ctx)
+    assert r.status is Status.PASS
+    assert any("CHECK_CATALOG('CHECK'" in c[-1] for c in ctx.runner().calls)
+
+
+def test_source_consistency_is_preparation_phase() -> None:
+    from exodia.core.result import Phase
+
+    src_tbl = registry.get_check("tenant-copy.hana.source-table-consistency")
+    src_cat = registry.get_check("tenant-copy.hana.source-catalog-consistency")
+    assert src_tbl is not None and src_tbl.phase is Phase.PREPARATION
+    assert src_cat is not None and src_cat.phase is Phase.PREPARATION
+
+
+def test_source_consistency_uses_source_key() -> None:
+    ctx = _ctx(ScriptedRunner(stdout=""), source_tenant_key="SRC")
+    r = _run_check("tenant-copy.hana.source-table-consistency", ctx)
+    assert r.status is Status.PASS
+    # connected with the SOURCE key
+    assert any("SRC" in c for c in ctx.runner().calls[0])
+
+
+def test_consistency_read_failure_fails() -> None:
+    ctx = _ctx(ScriptedRunner(exit_code=1, stdout=""), target_tenant_key="TGT")
+    r = _run_check("tenant-copy.hana.target-table-consistency", ctx)
+    assert r.status is Status.FAIL
+    assert r.facts["Ran"] == "No"
+
+
+def test_post_validation_runbook_wired() -> None:
+    rb = registry.get_runbook("tenant-copy.hana.post-validation")
+    assert rb is not None
+    steps = rb().steps
+    assert "tenant-copy.hana.target-table-consistency" in steps
+    assert "tenant-copy.hana.target-catalog-consistency" in steps
+    for s in steps:
+        assert registry.get_check(s) is not None, f"unresolved {s}"
+
+
+def test_source_consistency_in_readiness_source_runbook() -> None:
+    rb = registry.get_runbook("tenant-copy.hana.readiness-source")()
+    assert "tenant-copy.hana.source-table-consistency" in rb.steps
+    assert "tenant-copy.hana.source-catalog-consistency" in rb.steps
