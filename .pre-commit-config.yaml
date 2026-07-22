@@ -1,34 +1,28 @@
-# Pre-commit hooks for SAP Migration Toolkit.
-#
-# Install once:  pre-commit install
-# Run on all files:  pre-commit run --all-files
-#
-# Mirrors the CI gates (ruff, ruff-format, mypy) so problems are caught locally
-# before they reach a pull request.
+# Segurança "at all times" — camada pre-commit (Exodia / Python)
+# Instalado por Scooby. Usa as ferramentas locais (pipx/binário) — robusto, sem re-install de envs.
+# Bloqueia commits com segredos ou vulnerabilidades NOVAS.
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  - repo: local
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-toml
-      - id: check-added-large-files
-      - id: check-merge-conflict
+      - id: gitleaks
+        name: 🔑 gitleaks (segredos)
+        entry: gitleaks
+        args: ["protect", "--staged", "--no-banner", "--redact"]
+        language: system
+        pass_filenames: false
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.22
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
+      - id: bandit
+        name: 🐍 bandit (vulns Python)
+        entry: bandit
+        args: ["-ll", "-q", "-r", "src", "--baseline", ".bandit-baseline.json"]
+        language: system
+        pass_filenames: false
+        types: [python]
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2
-    hooks:
-      - id: mypy
-        files: ^src/
-        additional_dependencies:
-          - pydantic>=2
-          - types-paramiko
-          - types-pyyaml
+      - id: semgrep
+        name: 🛡️ semgrep (vulns código)
+        entry: semgrep
+        args: ["scan", "--config", "p/default", "--config", "p/python", "--severity", "ERROR", "--error", "--quiet", "--metrics=off", "--baseline-commit", "HEAD", "--exclude", ".venv"]
+        language: system
+        pass_filenames: false
+        types: [python]
