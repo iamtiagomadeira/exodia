@@ -1,0 +1,127 @@
+/* Exodia TUI — the flexible grid layout.
+ *
+ * A CSS grid is what makes the cockpit "flexible": panels are named cells that
+ * keep their identity and reflow on resize. The shape:
+ *
+ *   row 1  header        (wordmark + version), full width
+ *   row 2  body          -> left: operations tree | right: detail/log/results
+ *   row 3  footer        readiness board, full width
+ *
+ * The right column is itself a vertical stack (detail / log / results) so the
+ * three live regions share space and grow with the terminal.
+ */
+
+Screen {
+    layout: vertical;
+    background: $surface;
+}
+
+/* ---- header ---------------------------------------------------------- */
+#header {
+    height: auto;
+    min-height: 7;
+    padding: 0 1;
+    border: round $primary;
+    background: $panel;
+}
+
+#wordmark {
+    color: $accent;
+    text-style: bold;
+}
+
+/* ---- body: two columns ---------------------------------------------- */
+#body {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#sidebar {
+    width: 34;
+    min-width: 26;
+    border: round $primary-darken-1;
+    background: $panel;
+}
+
+#sidebar-title,
+.panel-title {
+    dock: top;
+    height: 1;
+    padding: 0 1;
+    background: $primary-darken-2;
+    color: $text;
+    text-style: bold;
+}
+
+#optree {
+    height: 1fr;
+    padding: 0 1;
+}
+
+/* right-hand column: detail on top, log middle, results bottom */
+#main {
+    layout: vertical;
+    width: 1fr;
+}
+
+#detail {
+    height: auto;
+    min-height: 6;
+    max-height: 40%;
+    border: round $primary-darken-1;
+    background: $panel;
+    padding: 0 1;
+}
+
+#logpanel {
+    height: 1fr;
+    border: round $primary-darken-1;
+    background: $panel;
+}
+
+#log {
+    height: 1fr;
+    padding: 0 1;
+    background: $panel;
+}
+
+#resultspanel {
+    height: 1fr;
+    border: round $primary-darken-1;
+    background: $panel;
+}
+
+#results {
+    height: 1fr;
+}
+
+/* ---- footer: readiness board ---------------------------------------- */
+#footer-board {
+    height: 3;
+    border: round $primary;
+    background: $panel;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+/* focus ring: the focused panel gets a bright accent border so keyboard
+ * navigation is obvious (arrows / hjkl / Tab move between panels). */
+#sidebar:focus-within,
+#detail:focus-within,
+#logpanel:focus-within,
+#resultspanel:focus-within {
+    border: round $accent;
+}
+
+/* status colours reused in the results DataTable + board */
+.pass  { color: $success; }
+.warn  { color: $warning; }
+.fail  { color: $error; }
+.skip  { color: $text-muted; }
+.err   { color: $error; text-style: bold; }
+
+/* the run notice / action-guard banner */
+.notice {
+    color: $warning;
+    text-style: italic;
+}

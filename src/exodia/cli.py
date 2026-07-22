@@ -52,6 +52,37 @@ app = typer.Typer(
 console = Console()
 
 
+# ASCII wordmark for the interactive launch banner. Pure typography of the
+# tool's own name — no third-party logos or trademarked artwork.
+_WORDMARK = r"""[bold cyan]
+ ███████ ██   ██  ██████  ██████  ██  █████
+ ██       ██ ██  ██    ██ ██   ██ ██ ██   ██
+ █████     ███   ██    ██ ██   ██ ██ ███████
+ ██       ██ ██  ██    ██ ██   ██ ██ ██   ██
+ ███████ ██   ██  ██████  ██████  ██ ██   ██[/]"""
+
+
+def _render_banner() -> None:
+    """Print the launch banner: wordmark, one-line pitch, creator, version."""
+    tagline = (
+        "[bold white]The stateless SAP migration toolkit[/] "
+        "[dim]— automate HANA tenant copies & the ABAP cutover with "
+        "read-only checks, guarded actions and sealed evidence.[/]"
+    )
+    footer = (
+        f"[cyan]Creator:[/] [bold]Tiago Madeira[/]    "
+        f"[dim]·[/]    [cyan]Version:[/] [bold]{__version__}[/]    "
+        f"[dim]·[/]    [dim]exodia --help for commands[/]"
+    )
+    console.print(
+        Panel(
+            f"{_WORDMARK}\n\n{tagline}\n\n{footer}",
+            border_style="cyan",
+            padding=(1, 3),
+        )
+    )
+
+
 def _version_cb(value: bool) -> None:
     if value:
         console.print(f"exodia {__version__}")
@@ -742,6 +773,7 @@ def _enrich_key_specs(specs: list, fields: dict, params: dict) -> list:
 @app.command("menu")
 def menu() -> None:
     """Interactive wizard — pick a methodology and operation, no long commands."""
+    _render_banner()
     prompter = _TyperPrompter()
     ops = discover_operations(registry)
     if not ops:
@@ -955,6 +987,29 @@ def menu() -> None:
     report.render_table(results, title, console)
     console.print(f"[dim]📁 evidence: {bundle.dir}[/]")
     raise typer.Exit(report.exit_code(results))
+
+
+@app.command("tui")
+def tui() -> None:
+    """Launch the full-screen grid cockpit (checks, runbooks, live results).
+
+    A keyboard-driven Textual UI: the operations tree on the left (families →
+    methods → runbooks/checks/actions), a detail panel, a live log tail and a
+    results table, with a readiness board in the footer. Read-only checks and
+    runbooks run for real and stream in; state-changing actions stay on the
+    guarded ``exodia run ... --execute`` flow. Requires the ``tui`` extra
+    (``pip install -e '.[tui]'``).
+    """
+    try:
+        from .tui import run_tui
+    except ModuleNotFoundError as exc:  # textual not installed
+        console.print(
+            "[red]The TUI needs the 'tui' extra.[/] Install it with:\n"
+            "  [bold]pip install -e '.[tui]'[/]   (or: pip install textual)\n"
+            f"[dim]({exc})[/]"
+        )
+        raise typer.Exit(1) from exc
+    run_tui()
 
 
 evidence_app = typer.Typer(name="evidence", help="Manage migration evidence bundles.")

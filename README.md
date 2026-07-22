@@ -4,7 +4,7 @@
   <a href="https://github.com/iamtiagomadeira/sap-migration-toolkit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/iamtiagomadeira/sap-migration-toolkit/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://github.com/iamtiagomadeira/sap-migration-toolkit/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/iamtiagomadeira/sap-migration-toolkit/actions/workflows/codeql.yml/badge.svg" /></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-blue" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-551%20passing-brightgreen" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-556%20passing-brightgreen" />
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
   <a href="https://iamtiagomadeira.github.io/sap-migration-toolkit/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-blue" /></a>
 </p>
@@ -80,6 +80,22 @@ operation needs:
 ```bash
 exodia menu        # guided, operator-friendly front door
 ```
+
+Or drive the whole toolkit from a **full-screen grid cockpit** — a
+keyboard-driven Textual UI with the operations tree, a live log, a streaming
+results table and a readiness board on one screen:
+
+```bash
+pip install -e '.[tui]'   # one-time: pull in the optional TUI extra
+exodia tui                # launch the cockpit
+```
+
+![Exodia TUI cockpit](docs/assets/tui-cockpit.png)
+
+Read-only **checks** and **runbooks** run for real from the TUI and stream in;
+state-changing **actions** stay on the guarded `exodia run … --execute` flow.
+Navigate with arrows / `hjkl` / `Tab`, `Enter` to run, `f` to zoom a panel,
+`q` to quit.
 
 Prefer direct commands? Everything is scriptable by name:
 

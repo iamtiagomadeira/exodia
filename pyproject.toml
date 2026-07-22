@@ -31,7 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 tui = ["textual>=0.60"]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.10", "types-paramiko", "types-pyyaml", "bandit>=1.7", "pip-audit>=2.7", "pre-commit>=3.7"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "types-paramiko", "types-pyyaml", "bandit>=1.7", "pip-audit>=2.7", "pre-commit>=3.7"]
 
 [project.scripts]
 exodia = "exodia.cli:app"
@@ -63,6 +63,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src/exodia"]
