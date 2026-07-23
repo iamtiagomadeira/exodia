@@ -1,10 +1,24 @@
-"""ExodiaTUI — the Textual application: a grid cockpit over the live registry.
+"""ExodiaTUI — the Textual application: a two-axis migration cockpit.
 
-Run it with ``exodia tui`` (or ``python -m exodia.tui``). It discovers the same
-checks / actions / runbooks the CLI uses and lays them out in a keyboard-driven
-grid. Read-only operations (checks, runbooks) run for real in a worker thread
-and stream into the log + results table; state-changing actions are shown but
-deferred to the guarded CLI flow.
+Run it with ``exodia tui`` (or ``python -m exodia.tui``). The cockpit is built
+around the two axes an SAP system copy actually has:
+
+  * METHOD axis  — *which* migration procedure. SAP splits system duplication
+                   into "System Copy" (classic SWPM: Backup & Restore, Export &
+                   Import) and "System Transition" (HANA DB-level: Tenant Copy,
+                   HSR). That is the left tree's top level.
+  * PHASE axis   — *when* in the cutover. Every method walks the same four
+                   macro-phases (Preparation -> Ramp-Down -> Downtime ->
+                   Post-Activities, per the ECS/HEC cutover plan). Once a method
+                   + context is chosen, the tree lays the operations out by
+                   phase.
+
+Choosing a method prompts for the context that disambiguates it — Source DB ->
+Target DB (same DB = homogeneous, different = heterogeneous/migration) and the
+application-server Stack (ABAP vs AS Java/PI-PO, which decides the post-copy
+activities). Read-only operations (checks, runbooks) run for real in a worker
+thread and stream into the log + results table; state-changing actions are shown
+but deferred to the guarded CLI flow.
 """
 
 from __future__ import annotations
@@ -15,10 +29,14 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import (
+    Button,
     DataTable,
     Footer,
+    Label,
     RichLog,
+    Select,
     Static,
     Tree,
 )
@@ -28,10 +46,15 @@ from .. import __version__
 from ..core.context import Context
 from ..core.evidence import EvidenceBundle
 from ..core.menu import (
-    checks_in,
+    DATABASES,
+    STACKS,
+    copy_kind,
+    db_blocks,
     discover_operations,
-    families,
+    group_by_phase,
     methodologies_in_family,
+    migration_families,
+    operations_for_context,
     pretty,
     runbooks_in,
 )
@@ -61,9 +84,110 @@ _STATUS_CLASS = {
     Status.ERROR: "err",
 }
 
+# Human labels for the application-server stacks offered in the context modal.
+_STACK_LABELS = {
+    "abap": "ABAP",
+    "java": "Java (PI/PO)",
+    "dual": "Dual-stack (ABAP+Java)",
+    "solman": "Solution Manager",
+}
+
+
+class ContextModal(ModalScreen[dict | None]):
+    """Prompt Source DB → Target DB → Stack for a chosen migration method.
+
+    Dismisses with a dict ``{"source_db", "target_db", "stack"}`` on confirm, or
+    ``None`` on cancel. Enforces the SAP method×DB rules (e.g. Tenant Copy / HSR
+    are HANA-only) live, disabling Confirm with an inline reason when invalid.
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, methodology: str, method_label: str) -> None:
+        super().__init__()
+        self._methodology = methodology
+        self._method_label = method_label
+
+    def compose(self) -> ComposeResult:
+        with Container(id="modal-box"):
+            yield Static(
+                f"[b]Configure:[/] [cyan]{self._method_label}[/]\n"
+                f"[dim]Source DB → Target DB → Stack. "
+                f"Different DBs ⇒ heterogeneous (migration).[/]",
+                id="modal-title",
+                markup=True,
+            )
+            yield Label("Source database")
+            yield Select(
+                [(db, db) for db in DATABASES],
+                id="source-db",
+                value=DATABASES[0],
+                allow_blank=False,
+            )
+            yield Label("Target database")
+            yield Select(
+                [(db, db) for db in DATABASES],
+                id="target-db",
+                value=DATABASES[0],
+                allow_blank=False,
+            )
+            yield Label("Application-server stack")
+            yield Select(
+                [(_STACK_LABELS[s], s) for s in STACKS],
+                id="stack",
+                value="abap",
+                allow_blank=False,
+            )
+            yield Static("", id="modal-msg", markup=True)
+            with Horizontal(id="modal-buttons"):
+                yield Button("Confirm", variant="primary", id="confirm")
+                yield Button("Cancel", variant="default", id="cancel")
+
+    def on_mount(self) -> None:
+        self._revalidate()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        self._revalidate()
+
+    def _revalidate(self) -> str | None:
+        """Update the inline message + Confirm state; return blocking reason."""
+        src = str(self.query_one("#source-db", Select).value)
+        tgt = str(self.query_one("#target-db", Select).value)
+        msg = self.query_one("#modal-msg", Static)
+        confirm = self.query_one("#confirm", Button)
+
+        reason = db_blocks(self._methodology, src) or db_blocks(self._methodology, tgt)
+        if reason:
+            msg.update(f"[b red]✗ {reason}[/]")
+            confirm.disabled = True
+            return reason
+
+        kind = copy_kind(src, tgt)
+        badge = "homogeneous" if kind == "homogeneous" else "heterogeneous (migration)"
+        msg.update(f"[green]✓ {src} → {tgt}  ·  [b]{badge}[/][/]")
+        confirm.disabled = False
+        return None
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm":
+            if self._revalidate() is not None:
+                return
+            self.dismiss(
+                {
+                    "source_db": str(self.query_one("#source-db", Select).value),
+                    "target_db": str(self.query_one("#target-db", Select).value),
+                    "stack": str(self.query_one("#stack", Select).value),
+                }
+            )
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
 
 class ExodiaTUI(App[None]):
-    """The flexible-grid migration cockpit."""
+    """The two-axis (method × phase) migration cockpit."""
 
     CSS_PATH = "exodia.tcss"
     TITLE = "EXODIA"
@@ -71,8 +195,9 @@ class ExodiaTUI(App[None]):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("enter", "run_selected", "Run"),
+        Binding("enter", "run_selected", "Run / Configure"),
         Binding("r", "run_selected", "Run", show=False),
+        Binding("escape", "clear_context", "Reset method", show=False),
         # vim-style + Tab panel focus movement
         Binding("tab", "focus_next", "Next panel", show=False),
         Binding("shift+tab", "focus_previous", "Prev panel", show=False),
@@ -88,7 +213,8 @@ class ExodiaTUI(App[None]):
         self._ops = discover_operations(registry)
         self._results: list[Result] = []
         self._started_at = datetime.now(UTC)
-        # maps a Tree node's data payload -> a run target
+        # active context: None until a method is configured via the modal.
+        self._active_ctx: dict | None = None
         self._counts = {
             "checks": len(registry.checks()),
             "actions": len(registry.actions()),
@@ -112,14 +238,15 @@ class ExodiaTUI(App[None]):
 
         with Horizontal(id="body"):
             with Container(id="sidebar"):
-                yield Static("Operations", id="sidebar-title")
+                yield Static("Migration methods", id="sidebar-title")
                 yield self._build_tree()
             with Vertical(id="main"):
                 with Container(id="detail"):
                     yield Static("Detail", classes="panel-title")
                     yield Static(
-                        "[dim]Select an operation on the left. "
-                        "Enter runs a read-only check or runbook.[/]",
+                        "[dim]Pick a migration method on the left "
+                        "(System Copy or System Transition) and press Enter "
+                        "to configure Source/Target DB + stack.[/]",
                         id="detail-body",
                         markup=True,
                     )
@@ -134,32 +261,71 @@ class ExodiaTUI(App[None]):
         yield Footer()
 
     def _build_tree(self) -> Tree[dict]:
-        """Build the family → method → (runbooks / checks / actions) tree."""
-        tree: Tree[dict] = Tree("migration families", id="optree")
+        """Build the METHOD-axis tree: family → method (leaves are selectable)."""
+        tree: Tree[dict] = Tree("migration methods", id="optree")
         tree.root.expand()
         tree.show_root = False
-        for fam in families(self._ops):
-            fam_node = tree.root.add(f"📁 {pretty(fam)}", data={"kind": "family"})
+        for fam in migration_families(self._ops):
+            fam_node = tree.root.add(f"📦 {pretty(fam)}", data={"kind": "family"})
             fam_node.expand()
             for method in methodologies_in_family(self._ops, fam):
-                m_node = fam_node.add(f"📂 {pretty(method)}", data={"kind": "method"})
-                # runbooks first (one-click sweeps), then checks, then actions
-                for name, desc, steps in runbooks_in(registry, method):
-                    m_node.add_leaf(
-                        f"📋 {name}  [dim]({steps} checks)[/]",
-                        data={"kind": "runbook", "name": name, "desc": desc},
-                    )
-                for op in checks_in(self._ops, method):
-                    m_node.add_leaf(
-                        f"🔍 {op.name}",
-                        data={"kind": "check", "name": op.name, "desc": op.description},
-                    )
-                for op in (o for o in self._ops if o.methodology == method and o.kind == "action"):
-                    m_node.add_leaf(
-                        f"⚙️  {op.name}",
-                        data={"kind": "action", "name": op.name, "desc": op.description},
-                    )
+                fam_node.add_leaf(
+                    f"📂 {pretty(method)}",
+                    data={"kind": "method", "methodology": method},
+                )
         return tree
+
+    def _rebuild_tree_for_context(self) -> None:
+        """Rebuild the tree to show the chosen method's PHASE-grouped plan.
+
+        Called after the context modal confirms. Replaces the method picker with
+        a phased plan (Preparation → Ramp-Down → Downtime → Post-Activities) of
+        the operations that apply to this (method, stack) context.
+        """
+        assert self._active_ctx is not None
+        ctx = self._active_ctx
+        method = ctx["methodology"]
+        stack = ctx["stack"]
+
+        tree = self.query_one(Tree)
+        tree.clear()
+        tree.show_root = True
+        kind = copy_kind(ctx["source_db"], ctx["target_db"])
+        tree.root.set_label(
+            f"🧭 {pretty(method)}  ·  {ctx['source_db']}→{ctx['target_db']} "
+            f"({kind})  ·  {_STACK_LABELS.get(stack, stack)}"
+        )
+        tree.root.expand()
+        tree.root.data = {"kind": "context-root"}
+
+        ctx_ops = operations_for_context(self._ops, methodology=method, stack=stack)
+        for _key, label, group in group_by_phase(ctx_ops):
+            phase_node = tree.root.add(f"📁 {label}", data={"kind": "phase"})
+            phase_node.expand()
+            # runbooks that belong to this method surface under Preparation-style
+            # sweeps; attach any runbook whose methodology matches, once, on the
+            # phase that carries its checks. Simpler: list method runbooks under
+            # the first phase group they were seen. Here we list per-op only.
+            for op in group:
+                icon = {"check": "🔍", "action": "⚙️ ", "runbook": "📋"}.get(op.kind, "•")
+                data = {
+                    "kind": op.kind,
+                    "name": op.name,
+                    "desc": op.description,
+                }
+                phase_node.add_leaf(f"{icon} {op.name}", data=data)
+
+        # Method-level runbooks (one-click sweeps) as a dedicated top group.
+        rbs = runbooks_in(registry, method)
+        if rbs:
+            rb_node = tree.root.add("📋 Runbooks (one-click sweeps)", data={"kind": "phase"})
+            rb_node.expand()
+            for name, desc, steps in rbs:
+                rb_node.add_leaf(
+                    f"📋 {name}  [dim]({steps} checks)[/]",
+                    data={"kind": "runbook", "name": name, "desc": desc},
+                )
+        tree.focus()
 
     # -- setup after mount -------------------------------------------------- #
     def on_mount(self) -> None:
@@ -178,7 +344,15 @@ class ExodiaTUI(App[None]):
         data = node.data or {}
         kind = data.get("kind")
         body = self.query_one("#detail-body", Static)
-        if kind == "check":
+        if kind == "method":
+            body.update(
+                f"[b cyan]{pretty(data['methodology'])}[/]  "
+                f"[dim](migration method)[/]\n\n"
+                f"[green]▶ Enter to configure[/] — pick Source DB → Target DB → "
+                f"stack, then the plan lays out by cutover phase.\n"
+                f"[dim]Different source/target DB ⇒ heterogeneous (migration).[/]"
+            )
+        elif kind == "check":
             check_cls = registry.get_check(data["name"])
             blocking = getattr(check_cls, "blocking", False) if check_cls else False
             body.update(
@@ -206,8 +380,20 @@ class ExodiaTUI(App[None]):
                 f"[yellow]⚠ Actions are guarded and NOT run from the TUI. "
                 f"Use:[/] [b]exodia run {data['name']} --execute[/]"
             )
+        elif kind == "phase":
+            body.update(
+                "[b]Cutover phase[/]\n\n"
+                "[dim]Operations grouped by lifecycle phase. Pick a check or "
+                "runbook leaf and press Enter to run it (read-only).[/]"
+            )
+        elif kind == "context-root":
+            body.update(
+                "[b]Migration plan[/]  [dim](press Esc to pick another method)[/]\n\n"
+                "[dim]The plan below is laid out by cutover phase for the chosen "
+                "method, DB direction and stack.[/]"
+            )
         else:
-            body.update("[dim]Pick a check or runbook leaf, then press Enter.[/]")
+            body.update("[dim]Pick a migration method, then press Enter.[/]")
 
     # -- running ------------------------------------------------------------ #
     def action_run_selected(self) -> None:
@@ -215,7 +401,9 @@ class ExodiaTUI(App[None]):
         node = tree.cursor_node
         data = (node.data or {}) if node else {}
         kind = data.get("kind")
-        if kind == "check":
+        if kind == "method":
+            self._configure_method(data["methodology"])
+        elif kind == "check":
             self._run_worker(kind="check", name=data["name"])
         elif kind == "runbook":
             self._run_worker(kind="runbook", name=data["name"])
@@ -227,7 +415,48 @@ class ExodiaTUI(App[None]):
                 title="Guarded action",
             )
         else:
-            self.notify("Select a check or runbook first.", severity="information")
+            self.notify("Pick a migration method, check or runbook first.",
+                        severity="information")
+
+    def _configure_method(self, methodology: str) -> None:
+        """Open the context modal for a method; rebuild the plan on confirm."""
+        def _on_close(result: dict | None) -> None:
+            if not result:
+                return
+            self._active_ctx = {"methodology": methodology, **result}
+            self.query_one("#log", RichLog).write(
+                f"[b]▶ configured[/] {pretty(methodology)} — "
+                f"{result['source_db']}→{result['target_db']} "
+                f"({copy_kind(result['source_db'], result['target_db'])}), "
+                f"stack={result['stack']}"
+            )
+            self._rebuild_tree_for_context()
+
+        self.push_screen(ContextModal(methodology, pretty(methodology)), _on_close)
+
+    def action_clear_context(self) -> None:
+        """Return to the method picker (Esc)."""
+        if self._active_ctx is None:
+            return
+        self._active_ctx = None
+        tree = self.query_one(Tree)
+        tree.clear()
+        tree.show_root = False
+        # repopulate the existing tree widget in place
+        tree.root.set_label("migration methods")
+        for fam in migration_families(self._ops):
+            fam_node = tree.root.add(f"📦 {pretty(fam)}", data={"kind": "family"})
+            fam_node.expand()
+            for method in methodologies_in_family(self._ops, fam):
+                fam_node.add_leaf(
+                    f"📂 {pretty(method)}",
+                    data={"kind": "method", "methodology": method},
+                )
+        tree.root.expand()
+        tree.focus()
+        self.query_one("#detail-body", Static).update(
+            "[dim]Pick a migration method on the left and press Enter.[/]"
+        )
 
     @work(thread=True, exclusive=True)
     def _run_worker(self, *, kind: str, name: str) -> None:

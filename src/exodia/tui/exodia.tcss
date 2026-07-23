@@ -125,3 +125,41 @@ Screen {
     color: $warning;
     text-style: italic;
 }
+
+/* ---- context modal: Source DB → Target DB → Stack ------------------- */
+ContextModal {
+    align: center middle;
+}
+
+#modal-box {
+    width: 60;
+    height: auto;
+    padding: 1 2;
+    border: thick $accent;
+    background: $panel;
+}
+
+#modal-title {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#modal-box Label {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+#modal-msg {
+    height: auto;
+    min-height: 1;
+    margin: 1 0;
+}
+
+#modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#modal-buttons Button {
+    margin-left: 2;
+}
