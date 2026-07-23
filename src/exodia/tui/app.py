@@ -60,7 +60,7 @@ from ..core.menu import (
     runbooks_in,
 )
 from ..core.registry import registry
-from ..core.result import Result, Status, format_duration
+from ..core.result import Phase, Result, Status, format_duration
 from ..core.runner import run_checks, run_runbook
 
 # ASCII wordmark — pure typography of the tool's own name (no third-party art).
@@ -436,6 +436,48 @@ class ExodiaTUI(App[None]):
             return _STATUS_ICON[Status.PASS]
         return "⏳"
 
+    _PHASE_KEY_TO_ENUM = {
+        "preparation": Phase.PREPARATION,
+        "ramp_down": Phase.RAMP_DOWN,
+        "downtime": Phase.DOWNTIME,
+        "post": Phase.POST,
+    }
+
+    def _phase_gate_badge(self, phase_key: str) -> str:
+        """Gate verdict badge for a phase, from the real gate engine.
+
+        Runs :func:`evaluate_gate` over the results seen for this phase so the
+        board shows the same GO / NO-GO / GO-WITH-OVERRIDE decision the CLI and
+        exception report use — not a hand-rolled heuristic. Returns a short
+        coloured token (e.g. ``[fail]NO-GO[/]``) or empty string when nothing
+        graded yet. Advisory failures never flip a gate to NO-GO here, exactly
+        as the COP model dictates.
+        """
+        from ..core.gate import GateDecision, evaluate_gate
+
+        phase = self._PHASE_KEY_TO_ENUM.get(phase_key)
+        if phase is None:
+            return ""
+        phase_results = [
+            r
+            for r in self._results
+            if self._name_to_phase.get(r.name, getattr(r.phase, "value", None))
+            == phase_key
+        ]
+        if not phase_results:
+            return ""
+        # The TUI runs interactively without a config file, so it uses the
+        # intrinsic (default) gate policy. Per-engagement reclassification lives
+        # in the CLI path where a --config is supplied.
+        verdict = evaluate_gate(phase, phase_results)
+        token = {
+            GateDecision.GO: "[pass]GO[/]",
+            GateDecision.NO_GO: "[fail]NO-GO[/]",
+            GateDecision.GO_WITH_OVERRIDE: "[warn]GO*[/]",
+            GateDecision.PENDING: "",
+        }
+        return token.get(verdict.decision, "")
+
     def _phase_board_text(self) -> str:
         """Render the compact per-phase progress board (markup string).
 
@@ -479,8 +521,10 @@ class ExodiaTUI(App[None]):
                 klass = "accent"
             bar = f"[{klass}]{'▓' * filled}[/][dim]{'░' * (bar_w - filled)}[/]"
             label = _PHASE_SHORT.get(key, key).ljust(label_w)
+            gate_badge = self._phase_gate_badge(key)
+            gate_suffix = f"  {gate_badge}" if gate_badge else ""
             lines.append(
-                f"[b]{label}[/]  {bar}  [b]{done}/{total}[/]  {icon}".rstrip()
+                f"[b]{label}[/]  {bar}  [b]{done}/{total}[/]  {icon}{gate_suffix}".rstrip()
             )
         return "\n".join(lines)
 

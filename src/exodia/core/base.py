@@ -43,7 +43,9 @@ class Check(ABC):
     #: the exception report; INFO is display-only.
     severity: Severity | None = None
     #: which system this runs against (source/target/both/org) — COP routing axis.
-    side: Side | None = None
+    #: Named ``gate_side`` to avoid clashing with the legacy string ``side``
+    #: attribute some OS-level checks use to pick an SSH host.
+    gate_side: Side | None = None
     #: who owns the follow-up (free string, e.g. "customer" / "migration-team").
     responsible: str | None = None
     #: which cutover macro-phase this check belongs to (drives report grouping)
@@ -88,8 +90,8 @@ class Check(ABC):
         # the legacy ``blocking`` flag) so every result carries a role.
         if result.severity is Severity.ADVISORY:  # the model default = "unset"
             result.severity = Severity.from_check(self)
-        if result.side is None and self.side is not None:
-            result.side = self.side
+        if result.side is None and self.gate_side is not None:
+            result.side = self.gate_side
         if result.responsible is None and self.responsible is not None:
             result.responsible = self.responsible
         result.stamp_timing(started, datetime.now(UTC))

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
-from exodia.core.result import Phase
+from exodia.core.result import Phase, Side
+from exodia.core.severity import Severity
 
 from . import _rfc
 
@@ -29,6 +30,11 @@ class SpoolRequestsCheck(Check):
     description = "Spool request backlog at takeover (SP01 / TSP01)."
     title = "SP01 — Spool Requests Backlog Check"
     phase = Phase.RAMP_DOWN
+    # A spool backlog is hygiene, not a copy-blocker — the customer decides
+    # whether to drain it before freeze. ADVISORY by default (reclassifiable).
+    severity = Severity.ADVISORY
+    gate_side = Side.SOURCE
+    responsible = "customer"
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS

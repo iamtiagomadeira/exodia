@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
-from exodia.core.result import Phase
+from exodia.core.result import Phase, Side
+from exodia.core.severity import Severity
 
 from . import _rfc
 
@@ -93,6 +94,12 @@ class SpamStatusCheck(Check):
     description = "SPAM status is clean (no aborted/pending support package, PAT03)."
     title = 'SPAM — Support Package Status ("GREEN")'
     phase = Phase.PREPARATION
+    # Go-live hygiene, not a copy-blocker: a non-GREEN SPAM queue is a quality
+    # signal the customer decides to clean or accept — it does not fail the copy
+    # itself. ADVISORY by default; a strict COP can reclassify via gate policy.
+    severity = Severity.ADVISORY
+    gate_side = Side.SOURCE
+    responsible = "customer"
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS

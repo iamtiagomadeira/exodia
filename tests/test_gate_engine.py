@@ -93,7 +93,7 @@ class _BlockingLegacyCheck(Check):
 class _AdvisoryNewCheck(Check):
     name = "test.new-advisory"
     severity = Severity.ADVISORY
-    side = Side.SOURCE
+    gate_side = Side.SOURCE
     responsible = "customer"
     phase = Phase.POST
 

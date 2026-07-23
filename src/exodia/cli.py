@@ -41,6 +41,7 @@ from .core.menu import (
 )
 from .core.monitor import get_monitor
 from .core.registry import registry
+from .core.result import Result
 from .core.runner import run_action, run_checks, run_runbook
 
 app = typer.Typer(
@@ -123,6 +124,71 @@ def list_ops() -> None:
 
     if not checks and not actions:
         console.print("[yellow]No operations discovered yet. Modules land under exodia.modules.[/]")
+
+
+def _render_gates(
+    results: list[Result],
+    ctx: Context,
+    *,
+    gate: bool,
+    exceptions: bool,
+    export: str | None,
+    no_emoji: bool,
+    system: str = "",
+) -> None:
+    """Render per-phase gate verdicts and (optionally) the exception report.
+
+    Layered flags: ``--export`` implies ``--exceptions`` implies ``--gate``.
+    The gate policy (reclassification + override rules) is read from the
+    context's ``gate:`` config block, so the same run behaves per-engagement.
+    Nothing prints unless at least one flag is set — the default runbook output
+    is unchanged.
+    """
+    from .core.gate import GatePolicy, evaluate_all_gates
+    from .core.gate_report import ExceptionReport
+
+    want_exceptions = exceptions or bool(export)
+    want_gate = gate or want_exceptions
+    if not want_gate:
+        return
+
+    policy = GatePolicy.from_context(ctx)
+    verdicts = evaluate_all_gates(results, policy=policy)
+    if not verdicts:
+        console.print("[dim]No graded results — no gate verdict.[/]")
+        return
+
+    # Per-phase gate summary (always shown when any gate flag is set).
+    console.print("")
+    gt = Table(title="Gate Verdicts (per phase)", expand=True)
+    gt.add_column("", width=6 if no_emoji else 3)
+    gt.add_column("Phase", no_wrap=True)
+    gt.add_column("Decision")
+    gt.add_column("Passed", justify="right")
+    gt.add_column("Detail")
+    for v in verdicts:
+        icon = "" if no_emoji else v.decision.icon
+        gt.add_row(
+            icon,
+            v.phase.label,
+            v.decision.value.upper().replace("_", " "),
+            f"{v.passed}/{v.total_graded}",
+            v.summary,
+        )
+    console.print(gt)
+
+    if not want_exceptions:
+        return
+
+    # Full exception & advisory report (the artifact the customer signs off).
+    method = str(ctx.get("method") or "")
+    rep = ExceptionReport(results, verdicts, system=ctx.sid or system, method=method)
+    console.print("")
+    rep.render_terminal(console, no_emoji=no_emoji)
+
+    if export:
+        path = rep.write_markdown(export)
+        console.print(f"\n[green]📄 exception report written:[/] {path}")
 
 
 def _build_context(
@@ -273,6 +339,21 @@ def run_runbook_op(
         None, "--config", help="YAML config with saved connection params."
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+    gate: bool = typer.Option(
+        False,
+        "--gate",
+        help="Show per-phase gate verdicts (GO / NO-GO / GO-WITH-OVERRIDE) after the table.",
+    ),
+    exceptions: bool = typer.Option(
+        False,
+        "--exceptions",
+        help="Print the exportable exception & advisory report (implies --gate).",
+    ),
+    export: str | None = typer.Option(
+        None,
+        "--export",
+        help="Write the exception report as Markdown to this path (implies --exceptions).",
+    ),
     no_emoji: bool = typer.Option(
         False,
         "--no-emoji",
@@ -285,6 +366,12 @@ def run_runbook_op(
     each step into a sealed evidence bundle, and finishes with a readiness
     verdict. Safe to re-run as often as you like — it always reflects the
     current state of the system.
+
+    Gate flags (COP model): ``--gate`` renders a per-phase GO/NO-GO verdict;
+    ``--exceptions`` prints the advisory report the customer signs off; and
+    ``--export PATH`` writes that report as portable Markdown. A per-engagement
+    gate policy (reclassification + override rules) is read from the config's
+    ``gate:`` block when present.
     """
     rb_cls = registry.get_runbook(name)
     if rb_cls is None:
@@ -306,6 +393,8 @@ def run_runbook_op(
     else:
         report.render_table(results, title, console, no_emoji=no_emoji)
         console.print(f"[dim]📁 evidence: {bundle.dir}[/]")
+        _render_gates(results, ctx, gate=gate, exceptions=exceptions, export=export,
+                      no_emoji=no_emoji, system=name)
 
     raise typer.Exit(report.exit_code(results))
 

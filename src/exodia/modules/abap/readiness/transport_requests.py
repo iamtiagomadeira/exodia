@@ -17,7 +17,8 @@ from collections import Counter
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
-from exodia.core.result import Phase
+from exodia.core.result import Phase, Side
+from exodia.core.severity import Severity
 
 from . import _rfc
 
@@ -34,6 +35,12 @@ class TransportRequestsCheck(Check):
     description = "Modifiable/unreleased transport requests (STMS / E070)."
     title = "STMS/SE01 — Pending Transport Requests Check"
     phase = Phase.RAMP_DOWN
+    # Open transports are surfaced for the engineer to judge (some are long-lived
+    # and legitimate) — not a hard copy-blocker. ADVISORY by default; a COP with
+    # a strict "transports must be released" rule reclassifies via gate policy.
+    severity = Severity.ADVISORY
+    gate_side = Side.SOURCE
+    responsible = "customer"
 
     def parameters(self) -> list[ParamSpec]:
         return _rfc.SOURCE_CONN_SPECS

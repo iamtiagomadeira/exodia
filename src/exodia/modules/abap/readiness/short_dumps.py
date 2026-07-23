@@ -16,7 +16,8 @@ from datetime import UTC, datetime
 
 from exodia.core import Check, Context, Result
 from exodia.core.params import ParamSpec
-from exodia.core.result import Phase
+from exodia.core.result import Phase, Side
+from exodia.core.severity import Severity
 
 from . import _rfc
 
@@ -28,6 +29,13 @@ class ShortDumpsCheck(Check):
     description = "Recent ABAP short dumps at takeover (ST22 / SNAP)."
     title = "ST22 — ABAP Short Dumps Check"
     phase = Phase.POST
+    # Hygiene, not a copy-blocker: runtime dumps are a go-live quality signal the
+    # customer decides to clean or accept — they do NOT fail a system copy. So
+    # ADVISORY by default (a COP can reclassify to blocking for a strict
+    # engagement via the gate policy). This is the ST22 case from COP_model.md.
+    severity = Severity.ADVISORY
+    gate_side = Side.SOURCE
+    responsible = "customer"
 
     def parameters(self) -> list[ParamSpec]:
         return [

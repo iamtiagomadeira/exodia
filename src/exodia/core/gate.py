@@ -262,3 +262,27 @@ def evaluate_gate(
         passed=passed,
         total_graded=graded,
     )
+
+
+def evaluate_all_gates(
+    results: list[Result],
+    policy: GatePolicy | None = None,
+    overrides: list[Override] | None = None,
+) -> list[GateVerdict]:
+    """Group results by phase and return one verdict per phase, in phase order.
+
+    Convenience wrapper used by the CLI/TUI: it bins results by their
+    ``Phase`` and calls :func:`evaluate_gate` on each bin. Phases with no
+    results are omitted. Verdicts come back sorted by ``Phase.order`` so the
+    caller can render gates in cutover sequence
+    (Preparation -> Ramp-Down -> Downtime -> Post-Activities).
+    """
+    policy = policy or GatePolicy()
+    by_phase: dict[Phase, list[Result]] = {}
+    for r in results:
+        by_phase.setdefault(r.phase, []).append(r)
+    verdicts = [
+        evaluate_gate(phase, phase_results, policy=policy, overrides=overrides)
+        for phase, phase_results in by_phase.items()
+    ]
+    return sorted(verdicts, key=lambda v: v.phase.order)
