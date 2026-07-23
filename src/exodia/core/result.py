@@ -12,6 +12,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from .severity import Severity
+
 
 class Status(str, Enum):
     """Outcome of a check or action phase."""
@@ -71,6 +73,29 @@ class Phase(str, Enum):
         }[self]
 
 
+class Side(str, Enum):
+    """Which system a check/step runs against — an axis the real COP tracks.
+
+    The Cutover Plan tags every step with a SIDE so the same finding can route
+    differently depending on where it lives. Kept alongside RESPONSIBLE (a free
+    string owner) to mirror the plan's routing model.
+    """
+
+    SOURCE = "source"
+    TARGET = "target"
+    BOTH = "both"
+    ORG = "org"  # organisational / project-level, not a specific system
+
+    @property
+    def label(self) -> str:
+        return {
+            Side.SOURCE: "Source",
+            Side.TARGET: "Target",
+            Side.BOTH: "Source+Target",
+            Side.ORG: "Project",
+        }[self]
+
+
 class Result(BaseModel):
     """Structured outcome of a single check or action phase."""
 
@@ -87,6 +112,15 @@ class Result(BaseModel):
     # --- report presentation (human-readable grouping) --------------------- #
     # Which cutover macro-phase this result belongs to (drives report grouping).
     phase: Phase = Phase.UNCLASSIFIED
+    # Gate role: BLOCKING fails the phase gate; ADVISORY feeds the exception
+    # report; INFO is display-only. Stamped from the check's intrinsic severity
+    # by ``execute`` unless a run already set it. The per-engagement GatePolicy
+    # (exodia.core.gate) may later reclassify this for reporting.
+    severity: Severity = Severity.ADVISORY
+    # Which system this ran against (source/target/both/org) and who owns the
+    # follow-up. Mirror the COP's SIDE + RESPONSIBLE routing axes; both optional.
+    side: Side | None = None
+    responsible: str | None = None
     # Explicit, action-oriented title for a human report, e.g.
     # "SM12 — Lock Entries Check" or "HANA Revision Compatibility". Falls back
     # to ``name`` when unset.

@@ -17,7 +17,8 @@ from .context import Context
 from .knowledge import enrich
 from .logging import get_logger
 from .params import ParamSpec
-from .result import Phase, Result
+from .result import Phase, Result, Side
+from .severity import Severity
 
 if TYPE_CHECKING:
     from .monitor import Monitor
@@ -32,8 +33,19 @@ class Check(ABC):
     name: str = ""
     #: human description
     description: str = ""
-    #: if True, a FAIL aborts the surrounding prepare pipeline immediately
+    #: if True, a FAIL aborts the surrounding prepare pipeline immediately.
+    #: LEGACY flag — kept for backward compat. Prefer declaring ``severity``.
+    #: When ``severity`` is unset, BLOCKING is derived from this (True->BLOCKING).
     blocking: bool = False
+    #: intrinsic gate role (BLOCKING/ADVISORY/INFO). Declare this on new checks.
+    #: When left None, it is derived from ``blocking`` for backward compatibility
+    #: (see ``Severity.from_check``). BLOCKING fails a phase gate; ADVISORY feeds
+    #: the exception report; INFO is display-only.
+    severity: Severity | None = None
+    #: which system this runs against (source/target/both/org) — COP routing axis.
+    side: Side | None = None
+    #: who owns the follow-up (free string, e.g. "customer" / "migration-team").
+    responsible: str | None = None
     #: which cutover macro-phase this check belongs to (drives report grouping)
     phase: Phase = Phase.UNCLASSIFIED
     #: explicit, action-oriented report title, e.g. "SM12 — Lock Entries Check".
@@ -71,6 +83,15 @@ class Check(ABC):
             result.phase = self.phase
         if not result.title and self.title:
             result.title = self.title
+        # Stamp the intrinsic gate role + routing axes onto the result unless the
+        # run already set them. Severity is always derived (from ``severity`` or
+        # the legacy ``blocking`` flag) so every result carries a role.
+        if result.severity is Severity.ADVISORY:  # the model default = "unset"
+            result.severity = Severity.from_check(self)
+        if result.side is None and self.side is not None:
+            result.side = self.side
+        if result.responsible is None and self.responsible is not None:
+            result.responsible = self.responsible
         result.stamp_timing(started, datetime.now(UTC))
         if result.status.is_blocking:
             enrich(result, ctx)
