@@ -1,6 +1,7 @@
 # Core Concepts
 
-Exodia has a small, deliberate vocabulary. Five ideas explain the whole tool.
+The toolkit has a small, deliberate vocabulary. A handful of ideas explain the
+whole tool.
 
 ## 1. Check — a read-only validation
 
@@ -13,8 +14,9 @@ A **check** answers one question about a live system and never mutates it:
 ✅ PASS   ⚠️ WARN   ❌ FAIL   ⏭️ SKIP   💥 ERROR
 ```
 
-Checks are safe to run anywhere, any time — nothing changes. A check can be
-**blocking** (a FAIL stops a guarded action from proceeding) or informational.
+Checks are safe to run anywhere, any time — nothing changes. Every check also
+carries an intrinsic **severity** (Blocking / Advisory / Info) that decides how
+a FAIL is treated at a phase gate — see [§6](#6-severity-the-gate-role-of-a-check).
 
 ## 2. Action — a guarded state change
 
@@ -30,7 +32,7 @@ pre-checks → dry-run (default) → confirm → execute → verify → rollback
 - Some actions add gates: a **customer-confirmation gate** (stopping the
   customer's app servers won't run until `customer_confirmed=true`), a
   **typed-name confirmation** (type the target tenant to proceed), or a
-  **manual attestation** (Exodia performs nothing; you record that you did an
+  **manual attestation** (the toolkit performs nothing; you record that you did an
   off-system step, e.g. emailed the customer).
 
 Commands are always argument lists (`list[str]`) — **never** `shell=True`. HANA
@@ -81,7 +83,7 @@ audit trail generated as a by-product of doing the work.
 ## 5. Snapshot & Compare — the air-gapped model
 
 In a real ECS/HEC engagement the source (customer) and target (HEC) sit in
-**isolated networks** — one host rarely reaches both. Exodia automates the
+**isolated networks** — one host rarely reaches both. The toolkit automates the
 consultant's manual "read the source, log on to the target, compare against my
 runbook" loop with two commands:
 
@@ -98,15 +100,50 @@ and a **SHA-256 self-hash**. `compare` verifies that hash first (rejecting a fil
 altered in transit), then produces a check-by-check **source-vs-target diff**
 with an aligned / diverge verdict. It carries no secrets — only measured facts.
 
+## 6. Severity — the gate role of a check
+
+Not every finding blocks a migration. Modelled on a real SAP Cutover Plan, every
+check declares an **intrinsic severity** — its role at a phase gate:
+
+| Severity | Icon | A FAIL means | Example |
+|---|---|---|---|
+| **Blocking** | 🔴 | the copy fails technically or risks data loss — a **NO-GO** | no recoverable backup, HSR not in SYNC, insufficient target space, active users at quiesce |
+| **Advisory** | 🟡 | system hygiene / go-live quality — never blocks; documented for sign-off | ST22 short-dumps, SPAM queue, spool, transports, mount-point >80% |
+| **Info** | ⚪ | context only — display-only, never a gate | recorded baselines, versions |
+
+Severity is **intrinsic to the check**, but the **gate policy is
+per-engagement**: a `gate:` block in the config can reclassify a check for a
+given customer without touching code. This is the split behind the whole gate
+engine — see **[Gates & the Exception Report](gates.md)**.
+
+## 7. Gate verdict & the exception report
+
+The **gate engine** rolls the graded results of a run up into a per-phase
+**GO / NO-GO / GO-WITH-OVERRIDE / PENDING** decision, and into an exportable
+**exception report** — the advisory + override artifact the customer signs off.
+Surface them on any runbook with `--gate`, `--exceptions`, or `--export`:
+
+```bash
+exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml --exceptions
+```
+
+Only blocking findings can produce a NO-GO; advisories accumulate into the
+report; a blocking NO-GO can be consciously **overridden** with a recorded
+*who / what / when / why*. Full detail in **[Gates & the Exception Report](gates.md)**.
+
 ---
 
 ## How they fit together
 
 ```
    Checks  ──grouped into──▶  Runbooks  ──run──▶  Verdict + Evidence bundle
-     │                                                      │
-     └── Actions (guarded) ── each phase ──────────────────┘
-                                                            │
+     │                                              │        │
+     │                                              ▼        │
+     │                                    Gate engine ──▶ GO / NO-GO
+     │                                    (per phase)   + exception report
+     │                                                           │
+     └── Actions (guarded) ── each phase ───────────────────────┘
+                                                                 │
    Snapshot (one side) ──carry──▶ Compare (other side) ──▶ diff + Evidence
 ```
 

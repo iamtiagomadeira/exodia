@@ -4,7 +4,7 @@ A cross-host HANA tenant copy takes a tenant database from a **source** system
 (typically the customer environment) and re-creates it on a **target** system
 (typically SAP HEC machines), across two *different* HANA installations.
 
-Exodia drives this in three stages, each with its own safety model:
+The toolkit drives this in three stages, each with its own safety model:
 
 1. **Readiness sweep** (read-only) — one command, one aggregate verdict.
 2. **Plan** (dry-run, the default) — see every SQL statement before it runs.
@@ -18,15 +18,15 @@ file, or in the evidence bundle.
 
 ## 1. One-time setup
 
-### 1.1 Where Exodia runs
+### 1.1 Where the toolkit runs
 
 Run it on a host that can reach **both** SYSTEMDBs — usually a jump host. For a
-remote host, Exodia uses SSH with host-key verification and key-based auth only.
+remote host, the toolkit uses SSH with host-key verification and key-based auth only.
 
 ### 1.2 hdbuserstore keys
 
-Create the secure-store keys once, on the box that runs Exodia. This is the only
-place a password is entered — into the store, never into Exodia.
+Create the secure-store keys once, on the box that runs the toolkit. This is the only
+place a password is entered — into the store, never into the toolkit.
 
 ```bash
 # SYSTEMDB keys (used by the readiness checks + the copy itself)
@@ -74,12 +74,12 @@ exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml
 In a real ECS/HEC engagement you usually **cannot** reach both systems from one
 host: the customer source and the HEC target sit in isolated networks. This is
 the manual "read the source, write it in my runbook, then log on to the target
-and compare" loop — and Exodia automates it with two commands.
+and compare" loop — and the toolkit automates it with two commands.
 
 **On (or with access to) the SOURCE — capture a portable snapshot:**
 
 ```bash
-exodia snapshot tenant-copy.hana.readiness \
+exodia snapshot tenant-copy.hana.readiness-source \
     --side source --config source.yaml -o source.json
 ```
 
@@ -95,10 +95,10 @@ attachment — it holds no secrets, only measured facts).
 
 ```bash
 exodia compare source.json \
-    --against tenant-copy.hana.readiness --side target --config target.yaml
+    --against tenant-copy.hana.readiness-target --side target --config target.yaml
 ```
 
-Exodia first **verifies the snapshot's SHA-256** (rejects it if altered in
+The toolkit first **verifies the snapshot's SHA-256** (rejects it if altered in
 transit), captures the target side live, then prints a check-by-check
 **source-vs-target diff** with an aligned / diverge verdict — your runbook table,
 generated automatically:
@@ -121,27 +121,41 @@ Exit code is automation-friendly: `0` = sides aligned, `1` = they diverge.
 
 ### Which checks run
 
-The eleven prerequisite checks, in dependency order:
+The single-host readiness runbook (`tenant-copy.hana.readiness`) runs 17 checks
+in dependency order, grouped by concern:
 
-| Order | Check | What it proves |
+| Group | Checks | What they prove |
 |---|---|---|
-| 1 | `source-userstore-key` | source SYSTEMDB key authenticates |
-| 2 | `target-userstore-key` | target SYSTEMDB key authenticates |
-| 3 | `cross-host-reachability` | target can reach the source SQL port |
-| 4 | `source-tenant-online` | the source tenant exists and is ONLINE |
-| 5 | `target-tenant-absent` | the target name is free (never overwrite) |
-| 6 | `version-match` | target HANA revision ≥ source |
-| 7 | `ssl-collateral` | cross-host TLS/SSL material is in place |
-| 8 | `source-replication-status` | source isn't mid-replication elsewhere |
-| 9 | `target-license` | target is licensed |
-| 10 | `target-data-space` | room on the target data volume |
-| 11 | `target-log-space` | room on the target log volume |
+| Connectivity | `source-userstore-key`, `target-userstore-key`, `cross-host-reachability` | both SYSTEMDB keys authenticate; the target reaches the source SQL port |
+| Topology | `source-tenant-online`, `target-tenant-absent`, `version-match` | source tenant is ONLINE, target name is free, target revision ≥ source |
+| Pre-conditions | `source-ports`, `target-ports`, `source-replication-parameters`, `target-replication-parameters`, `ssl-collateral`, `source-replication-status` | HANA service ports, HSR/SSL/persistence params, TLS material, source not mid-replication |
+| Capacity | `target-license`, `target-data-space`, `target-log-space` | target is licensed and has room on both volumes |
+| Consistency | `source-table-consistency`, `source-catalog-consistency` | table + catalog consistency baseline before the copy |
+
+The side-scoped runbooks split this by network: `tenant-copy.hana.readiness-source`
+(7 source-side checks, run in the customer network) and
+`tenant-copy.hana.readiness-target` (10 target-side checks, run in the HEC
+network).
 
 It re-reads the live systems every time — safe to run as often as you like. The
 verdict is honest: a run where nothing could be evaluated reads **Inconclusive**,
 never a false "ready".
 
 Re-run it until the verdict is green before touching the copy.
+
+### The gate verdict & exception report
+
+Add the gate flags to any readiness run to grade it into a per-phase
+**GO / NO-GO** verdict and the exportable advisory report:
+
+```bash
+exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml --exceptions
+exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml --export exceptions.md
+```
+
+Only **blocking** findings (missing key, target space, revision, consistency)
+turn the gate to NO-GO; advisories are documented for sign-off. See
+**[Gates & the Exception Report](gates.md)**.
 
 ---
 
@@ -152,7 +166,7 @@ exodia run tenant-copy.hana.copy-tenant --config tenant-copy.yaml
 ```
 
 Prints the exact ordered SQL it *would* run (e.g. `CREATE DATABASE QAS AS
-REPLICA OF PRD AT 'customer-hana:33013'`, then the finalize step) and executes
+REPLICA OF PRD AT 'source-host:33013'`, then the finalize step) and executes
 nothing. Review it.
 
 ---
@@ -182,7 +196,7 @@ and says so — so you always know whether integrity was actually checked.
 
 ### Rollback
 
-A completed copy is not auto-reversible. On failure Exodia prints the documented
+A completed copy is not auto-reversible. On failure the toolkit prints the documented
 rollback (drop the partially-created target tenant: `DROP DATABASE <target>`,
 see SAP Note 2101244) — it never silently drops anything.
 

@@ -1,6 +1,6 @@
 # SAP MIG cutover — the four phases end to end
 
-Exodia maps an ECS/HEC ABAP cutover onto the four macro-phases of the Cutover
+SAP Migration Toolkit maps an ECS/HEC ABAP cutover onto the four macro-phases of the Cutover
 Plan. Every check and action is tagged with its phase, so the evidence report
 groups them exactly the way a migration team reasons about the day.
 
@@ -53,7 +53,7 @@ exodia run abap.rampdown.adapt-operation-modes --config source.yaml --execute --
 
 # 3. Lock business users (technical users DDIC/SAP*/TMSADM are always spared)
 exodia run abap.rampdown.lock-users --config source.yaml --execute --yes
-#   set business_users="JSMITH,MARY,..." in the config
+#   set business_users="BIZUSER1,BIZUSER2,..." in the config
 
 # 4. Stop ALL application servers — ONLY after the customer confirms
 exodia run abap.rampdown.stop-app-servers --config source.yaml --execute --yes
@@ -63,7 +63,7 @@ exodia run abap.rampdown.stop-app-servers --config source.yaml --execute --yes
 
 # 5. Inform the customer that ramp-down is complete — MANUAL
 exodia run abap.rampdown.inform-customer --config source.yaml --execute --yes
-#   Exodia sends nothing: the admin emails the customer, then sets attested=true
+#   the toolkit sends nothing: the admin emails the customer, then sets attested=true
 #   so the cutover record shows ramp-down completion was communicated.
 ```
 
@@ -97,11 +97,35 @@ exodia run abap.post.resume-jobs --config target.yaml --execute --yes
 
 # 3. Unlock the business users (re-open to end users)
 exodia run abap.post.unlock-users --config target.yaml --execute --yes
-#   business_users="JSMITH,MARY,..." — typically the same set locked at ramp-down
+#   business_users="BIZUSER1,BIZUSER2,..." — typically the same set locked at ramp-down
 
 # 4. Validate the system is online (SM51)
 exodia run abap.post.validate-online --config target.yaml --execute --yes
 ```
+
+---
+
+## Gate verdict per phase
+
+Any readiness sweep can render a per-phase **GO / NO-GO** verdict and the
+exportable **exception report** — the artifact the customer signs off. Add the
+gate flags to the readiness runbooks:
+
+```bash
+# Preparation gate verdict + advisory report, exported to Markdown:
+exodia runbook abap.pre-migration-checks --config source.yaml --export prep-exceptions.md
+
+# Downtime-entry readiness with just the per-phase verdicts:
+exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml --gate
+```
+
+Only **blocking** findings turn a gate to NO-GO. The ABAP ramp-down quiesce
+checks (active users, locks, queued jobs) are blocking; the hygiene checks (ST22
+short-dumps, SPAM, spool, transports) are advisories that document but never
+block. A blocking NO-GO can be consciously **overridden** — every override is
+recorded in the report and the evidence bundle. See
+**[Gates & the Exception Report](gates.md)** for the full model and the
+per-engagement `gate:` config block.
 
 ---
 

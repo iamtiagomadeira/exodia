@@ -1,13 +1,8 @@
-# HANA Tenant Copy — complete Exodia coverage
+# HANA Tenant Copy — complete toolkit coverage
 
-Everything Exodia runs for a HANA cross-host tenant copy, mapped to the four
+Everything the toolkit runs for a HANA cross-host tenant copy, mapped to the four
 cutover phases. Modelled on a real ECS/HEC dry-run runbook, fully abstracted
 (no customer data).
-
-![Tenant copy flow](assets/tenant-copy-flow.png)
-
-*(Diagram source: [`tenant-copy-flow.mmd`](tenant-copy-flow.mmd) — regenerate with
-`mmdc -i docs/tenant-copy-flow.mmd -o docs/assets/tenant-copy-flow.png -b white`.)*
 
 Legend: **CHECK** = read-only validation · **ACTION** = guarded state change
 (dry-run → confirm → execute → verify) · ⛔ customer-confirmation gate ·
@@ -128,3 +123,17 @@ exodia compare source.json --against tenant-copy.hana.readiness-target --side ta
 ```
 
 Print the whole day-of playbook with `exodia cutover-plan`.
+
+## Gate verdict & exception report
+
+Any readiness runbook can render a per-phase **GO / NO-GO** verdict and the
+exportable advisory report:
+
+```bash
+exodia runbook tenant-copy.hana.readiness --config tenant-copy.yaml --exceptions
+```
+
+The tenant-copy checks are graded by **severity**: the connectivity, capacity,
+revision, and post-copy consistency checks are **blocking** (a FAIL is a NO-GO);
+the remaining hygiene signals are **advisories** documented for sign-off. See
+**[Gates & the Exception Report](gates.md)** for the full model.

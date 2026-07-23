@@ -1,6 +1,6 @@
 # Authoring a module
 
-Exodia is **plugable**: drop a Python file under `src/exodia/modules/` and its
+The toolkit is **plugable**: drop a Python file under `src/exodia/modules/` and its
 checks and actions appear in `exodia list` — no central registration, no wiring.
 This guide walks through adding your own.
 

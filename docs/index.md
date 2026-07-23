@@ -24,7 +24,7 @@ every run.
 
 An SAP system copy today is largely manual: a consultant babysits `sapinst`,
 runs prerequisite checks by hand across a dozen transactions and two SYSTEMDBs,
-and pastes screenshots into a handover. Exodia turns that runbook into
+and pastes screenshots into a handover. The toolkit turns that runbook into
 **repeatable, monitored, auditable automation** — while keeping the human in
 control for the decisions that matter.
 
@@ -58,7 +58,15 @@ control for the decisions that matter.
     ---
 
     Drop a module in and it is auto-discovered in the menu, `list`, and
-    runbooks. No central wiring. 91 checks, 25 actions, 7 runbooks today.
+    runbooks. No central wiring. 107 checks, 38 actions, 7 runbooks today.
+
+-   :material-traffic-light:{ .lg .middle } **Gate at the boundaries**
+
+    ---
+
+    Each check carries an intrinsic severity; the gate engine turns a run into a
+    per-phase GO / NO-GO verdict. Only blocking findings stop a cutover — hygiene
+    findings become documented advisories the customer signs off.
 
 </div>
 
@@ -74,7 +82,12 @@ control for the decisions that matter.
 
 -   **:material-book-open-variant: [Core Concepts](concepts.md)**
 
-    Checks, actions, runbooks, evidence, and the snapshot/compare model.
+    Checks, actions, runbooks, severities, evidence, and snapshot/compare.
+
+-   **:material-traffic-light: [Gates & the Exception Report](gates.md)**
+
+    Severities, the per-phase GO / NO-GO verdict, audited overrides, and the
+    exportable advisory report the customer signs off.
 
 -   **:material-database-arrow-right: [HANA Tenant Copy](tenant-copy.md)**
 
@@ -82,7 +95,7 @@ control for the decisions that matter.
 
 -   **:material-sitemap: [Tenant Copy — Full Coverage](tenant-copy-coverage.md)**
 
-    Every check and action, phase by phase, with the flow diagram.
+    Every check and action, phase by phase.
 
 -   **:material-timeline-clock: [SAP MIG Cutover](cutover.md)**
 
@@ -97,7 +110,7 @@ control for the decisions that matter.
 ---
 
 !!! note "Independent open-source project"
-    Exodia references SAP Note *numbers* for remediation and never reproduces
+    The toolkit references SAP Note *numbers* for remediation and never reproduces
     their copyrighted text. SAP, HANA, and related marks are trademarks of SAP
     SE. This is an independent, unofficial project — not affiliated with or
     endorsed by SAP.
